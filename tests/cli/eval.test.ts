@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
+import { fakeDifft } from '../support/difftastic.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
 
 const evals = path.join(import.meta.dirname, '../../evals/review-tour');
@@ -57,6 +58,15 @@ test('the fixture holds a cross-file move, a rename, a reformat, a generated fil
   assert.ok(Number(discount.stdout.split('\t')[0]) >= 10, discount.stdout);
   assert.match(ignoringWhitespace.stdout, /^1\t1\t/);
   assert.match(fs.readFileSync(path.join(folder, 'to-read.patch'), 'utf8'), /^diff --git a\/src\/discount\.ts/m);
+});
+
+test('with difftastic installed, the hidden change and the wiring stay unproven', () => {
+  fakeDifft(sandbox);
+  const { folder } = prepareFixture();
+
+  const files = filesOf(folder);
+  assert.deepEqual(files.get('src/cart.ts')?.proofs, ['whitespace-only', 'syntax-identical']);
+  for (const unproven of ['src/index.ts', 'src/discount.ts']) assert.equal(files.get(unproven)?.proofs, undefined, unproven);
 });
 
 const intent = {
