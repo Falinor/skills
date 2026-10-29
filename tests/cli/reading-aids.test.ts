@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
+import { breakout, hostileName, payloads, renderHostileTour } from '../support/hostile.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
 import { prepareChange, stepText, writePlan } from '../support/tour.ts';
 
@@ -227,4 +228,21 @@ test('keeps raw HTML and non-https links in prose as plain text', () => {
     ),
   );
   assert.doesNotMatch(html, /href="(?!#step-)/);
+});
+
+test('escapes hostile text in prose, file names and diffs, keeping it readable', () => {
+  const html = fs.readFileSync(renderHostileTour(sandbox), 'utf8');
+
+  const body = html.slice(html.indexOf('<body>'));
+  assert.doesNotMatch(body, /<(script|img|svg|iframe|style)\b/i);
+  assert.doesNotMatch(body, /<[^>]*\son[a-z]+\s*=/i, 'an event-handler attribute reached the markup');
+  for (const [, href] of body.matchAll(/href="([^"]*)"/g)) {
+    assert.match(href, /^(#step-\d+|https:\/\/)/, `unexpected link target ${href}`);
+  }
+  assert.ok(body.includes('href="https://example.invalid/&quot;onmouseover=&quot;window.__pwned=1"'));
+  const step = stepText(html, 1);
+  for (const payload of [...payloads, hostileName]) {
+    assert.ok(step.includes(payload), `"${payload}" is not shown as text`);
+  }
+  assert.ok(!step.includes(breakout));
 });
