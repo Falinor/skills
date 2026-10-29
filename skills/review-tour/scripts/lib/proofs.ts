@@ -3,17 +3,17 @@
 // anything, so proven files never reach the agent.
 import path from 'node:path';
 import { hasDifftastic, sameSyntax } from './difftastic.ts';
-import { listMoves, listRawEntries, readBlobs, type FileMoves, type RawEntry } from './git.ts';
-import type { ChangedFile, Proof } from './work-folder.ts';
+import { listMoves, readBlobs, type FileMoves, type ListedFile, type Range, type RawEntry } from './git.ts';
+import type { Proof } from './work-folder.ts';
 
 /** One changed file as the provers see it. */
-type Candidate = { file: ChangedFile; entry: RawEntry };
+type Candidate = ListedFile;
 
 /** The range under proof and its changed files, in patch order. */
-type Range = { root: string; from: string; to: string; candidates: Candidate[] };
+type Proving = Range & { candidates: Candidate[] };
 
 /** The indexes of the candidates a proof holds for. */
-type Prover = (range: Range) => Set<number>;
+type Prover = (proving: Proving) => Set<number>;
 
 const isRegular = (mode: string) => mode === '100644' || mode === '100755';
 
@@ -90,8 +90,8 @@ function occurrences(text: string, block: string): number {
 }
 
 /** Every changed line moved, each moved block removed once and added once, into or out of another code file. */
-const pureMove: Prover = ({ root, from, to, candidates }) => {
-  const moves = listMoves(root, from, to);
+const pureMove: Prover = ({ candidates, ...range }) => {
+  const moves = listMoves(range);
   const runsOf = moves.map((file) => file.runs.map((run) => ({ sign: run.sign, text: enclose(run.blocks.flat()) })));
   const isCode = candidates.map(({ entry }) => pathsOf(entry).every(inCodeLanguage));
   /** Where `block` occurs among the runs of sign `sign`, one file index per occurrence. */
@@ -150,13 +150,11 @@ const provers: [Proof, Prover][] = [
   ['syntax-identical', syntaxIdentical],
 ];
 
-/** `files` with the proofs each one carries; `files` must list the range `from`..`to` in patch order. */
-export function proveFiles(root: string, from: string, to: string, files: ChangedFile[]): ChangedFile[] {
-  const entries = listRawEntries(root, from, to);
-  const candidates = files.map((file, index) => ({ file, entry: entries[index] }));
-  const found = provers.map(([proof, prove]) => [proof, prove({ root, from, to, candidates })] as const);
-  return files.map((file, index) => {
+/** `listed` with the proofs each file carries; `listed` must list `range` in patch order. */
+export function proveFiles(range: Range, listed: ListedFile[]): ListedFile[] {
+  const found = provers.map(([proof, prove]) => [proof, prove({ ...range, candidates: listed })] as const);
+  return listed.map(({ file, entry }, index) => {
     const proofs = found.filter(([, proven]) => proven.has(index)).map(([proof]) => proof);
-    return proofs.length > 0 ? { ...file, proofs } : file;
+    return { file: proofs.length > 0 ? { ...file, proofs } : file, entry };
   });
 }

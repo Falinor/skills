@@ -90,20 +90,21 @@ export function prepare(args: string[]): void {
   // The captured range: the full change, or for a follow-up only what changed since the earlier head.
   const from = followUp?.from ?? mergeBase;
 
-  const listed = listChangedFiles(root, from, head);
+  const range = { root, from, to: head };
+  const listed = markGenerated(range, mergeBase, proveFiles(range, listChangedFiles(range)));
   const change: Change = {
     repository: path.basename(root),
     target,
     base,
     mergeBase,
     head,
-    files: markGenerated(root, mergeBase, from, head, proveFiles(root, from, head, listed)),
+    files: listed.map(({ file }) => file),
     ...(pullRequest && { pullRequest: { number: pullRequest.number, url: pullRequest.url } }),
     ...(followUp && { followUp }),
   };
   // A follow-up gets its own folder, so the earlier tour's page stays as it was.
   const folder = workFolderFor(change.repository, followUp ? `${target}-since-${followUp.since}` : target);
-  const patch = capturePatch(root, from, head);
+  const patch = capturePatch(range);
   writeCapture(folder, change, patch);
   const sections = patchSections(patch);
   const toRead = change.files.flatMap((file, index) => (mayBeMechanical(file) ? [] : [sections[index]])).join('');

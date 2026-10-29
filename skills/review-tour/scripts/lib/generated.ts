@@ -1,7 +1,7 @@
 // Declared generated: files the repository marks as generated. A declaration
 // is not a proof, and only the base's declarations count: a change could
 // otherwise declare its own edits generated to keep them from the reviewer.
-import { linguistGenerated, listRawEntries, readBlobs } from './git.ts';
+import { linguistGenerated, readBlobs, type ListedFile, type Range } from './git.ts';
 import type { ChangedFile } from './work-folder.ts';
 
 const absent = /^0+$/;
@@ -10,12 +10,12 @@ const absent = /^0+$/;
 const hasHeader = (text: string | undefined) => text?.split('\n', 5).some((line) => line.includes('@generated')) ?? false;
 
 /**
- * `files` (the range `from`..`to` in patch order) with who declares each
- * generated: the base, read at `mergeBase` whatever `from` is, or only the
- * change, read at `to`.
+ * `listed` (`range` in patch order) with who declares each file generated:
+ * the base, read at `mergeBase` whatever the range starts from, or only the
+ * change, read at the range's end.
  */
-export function markGenerated(root: string, mergeBase: string, from: string, to: string, files: ChangedFile[]): ChangedFile[] {
-  const entries = listRawEntries(root, from, to);
+export function markGenerated({ root, to }: Range, mergeBase: string, listed: ListedFile[]): ListedFile[] {
+  const files = listed.map(({ file }) => file);
   const pathsOf = (file: ChangedFile) => (file.oldPath ? [file.oldPath, file.path] : [file.path]);
   const byBase = linguistGenerated(root, mergeBase, files.flatMap(pathsOf));
   const byChange = linguistGenerated(root, to, files.map((file) => file.path));
@@ -23,15 +23,19 @@ export function markGenerated(root: string, mergeBase: string, from: string, to:
   // its own version of that path. A renamed file needs both paths declared:
   // the old path's header says nothing about where the file now lives.
   const atBase = (filePath: string) => `${mergeBase}:${filePath}`;
-  const texts = files.flatMap((file, index) =>
-    file.additions === null ? [] : [...pathsOf(file).map(atBase), entries[index].newBlob].filter((name) => !absent.test(name)),
+  const texts = listed.flatMap(({ file, entry }) =>
+    file.additions === null ? [] : [...pathsOf(file).map(atBase), entry.newBlob].filter((name) => !absent.test(name)),
   );
   const blobs = readBlobs(root, texts);
   const declaredByBase = (filePath: string) => byBase.has(filePath) || hasHeader(blobs.get(atBase(filePath)));
 
-  return files.map((file, index) => {
-    if (pathsOf(file).every(declaredByBase)) return { ...file, generated: 'base' };
-    if (byChange.has(file.path) || hasHeader(blobs.get(entries[index].newBlob))) return { ...file, generated: 'change' };
-    return file;
+  const declarer = ({ file, entry }: ListedFile): ChangedFile['generated'] => {
+    if (pathsOf(file).every(declaredByBase)) return 'base';
+    if (byChange.has(file.path) || hasHeader(blobs.get(entry.newBlob))) return 'change';
+    return undefined;
+  };
+  return listed.map((item) => {
+    const generated = declarer(item);
+    return generated ? { ...item, file: { ...item.file, generated } } : item;
   });
 }

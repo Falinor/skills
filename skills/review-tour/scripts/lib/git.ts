@@ -20,6 +20,9 @@ export function commitOf(cwd: string, ref: string): string | undefined {
   return result.status === 0 ? result.stdout.trim() : undefined;
 }
 
+/** What a change's diff runs between in the repository at `root`: commits, or trees for a replayed follow-up. */
+export type Range = { root: string; from: string; to: string };
+
 // Neutralise user configuration that changes diff output (external diff
 // tools, prefixes, colours, textconv, relative paths). Every diff of one
 // change uses the same flags, so listings and the patch list files in the
@@ -76,9 +79,9 @@ const moveColours = [
 ].flatMap((setting) => ['-c', `color.diff.${setting}`]);
 
 /** Every changed file's moved lines, in patch order. Moves are detected across the whole range at once. */
-export function listMoves(cwd: string, from: string, to: string): FileMoves[] {
+export function listMoves({ root, from, to }: Range): FileMoves[] {
   const patch = diff(
-    cwd,
+    root,
     ['--color=always', '--color-moved=zebra', '--color-moved-ws=no', '--ws-error-highlight=none', from, to],
     moveColours,
   );
@@ -130,8 +133,8 @@ export function linguistGenerated(cwd: string, source: string, paths: string[]):
 }
 
 /** The full patch from `from` to `to`, one `diff --git` section per changed file. */
-export function capturePatch(cwd: string, from: string, to: string): string {
-  return diff(cwd, [from, to]);
+export function capturePatch({ root, from, to }: Range): string {
+  return diff(root, [from, to]);
 }
 
 /** git's raw listing of one changed file: modes, blob ids and status with its score. */
@@ -148,8 +151,8 @@ export type RawEntry = {
 };
 
 /** Every changed file's raw entry, in patch order. */
-export function listRawEntries(cwd: string, from: string, to: string): RawEntry[] {
-  const raw = diff(cwd, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
+function listRawEntries({ root, from, to }: Range): RawEntry[] {
+  const raw = diff(root, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
   const entries: RawEntry[] = [];
   for (let i = 0; i < raw.length && raw[i]; ) {
     const [oldMode, newMode, oldBlob, newBlob, status] = raw[i++].slice(1).split(' ');
@@ -160,24 +163,24 @@ export function listRawEntries(cwd: string, from: string, to: string): RawEntry[
   return entries;
 }
 
-/** Every changed file with its status and line counts, in patch order. */
-export function listChangedFiles(cwd: string, from: string, to: string): ChangedFile[] {
-  const numstat = diff(cwd, ['--numstat', '-z', from, to]).split('\0');
+/** A changed file beside git's raw entry for it, whose modes and blob ids `change.json` leaves out. */
+export type ListedFile = { file: ChangedFile; entry: RawEntry };
 
-  const files: ChangedFile[] = listRawEntries(cwd, from, to).map(({ oldPath, path, status }) => ({
-    ...(oldPath && { oldPath }),
-    path,
-    status: status[0],
-    additions: null,
-    deletions: null,
+/** Every changed file with its status, line counts and raw entry, in patch order. */
+export function listChangedFiles(range: Range): ListedFile[] {
+  const numstat = diff(range.root, ['--numstat', '-z', range.from, range.to]).split('\0');
+
+  const listed: ListedFile[] = listRawEntries(range).map((entry) => ({
+    file: { ...(entry.oldPath && { oldPath: entry.oldPath }), path: entry.path, status: entry.status[0], additions: null, deletions: null },
+    entry,
   }));
 
   let index = 0;
   for (let i = 0; i < numstat.length && numstat[i]; index++) {
     const [additions, deletions, path] = numstat[i++].split('\t');
     if (path === '') i += 2; // rename or copy: old and new paths follow
-    files[index].additions = additions === '-' ? null : Number(additions);
-    files[index].deletions = deletions === '-' ? null : Number(deletions);
+    listed[index].file.additions = additions === '-' ? null : Number(additions);
+    listed[index].file.deletions = deletions === '-' ? null : Number(deletions);
   }
-  return files;
+  return listed;
 }
