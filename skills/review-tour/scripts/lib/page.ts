@@ -1,6 +1,7 @@
 // Builds the tour page as one self-contained HTML file. Every piece of text
 // from the tour plan or the patch goes through `escape`, or through the
 // escaping Markdown subset for prose.
+import { describeFollowUp } from './follow-up.ts';
 import { inlineMarkdown, markdown } from './markdown.ts';
 import type { FileDiff, Hunk } from './patch.ts';
 import type { Callout, Intent, Step, TourPlan, Trace } from './plan.ts';
@@ -154,7 +155,7 @@ export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, Fi
 <header>
 <h1>Tour of <code>${escape(change.target)}</code></h1>
 <p>${escape(change.repository)} · against <code>${escape(change.base)}</code> · head <code>${escape(change.head.slice(0, 12))}</code></p>
-</header>
+${change.followUp ? `<p class="follow-up">${escape(describeFollowUp(change.followUp))}</p>\n` : ''}</header>
 <main>
 ${renderIntent(plan.intent)}
 ${steps.join('\n')}

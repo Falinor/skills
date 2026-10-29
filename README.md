@@ -4,9 +4,11 @@ Agent skills in the [Agent Skills](https://agentskills.io) format. They run in C
 
 ## review-tour
 
-`/review-tour <pull request number|URL, or branch> [base <ref>]` builds a **tour** of a change: a local, self-contained HTML page that leads a human reviewer through the change step by step, each step with an explanation and the real diffs from git. The page is written to a per-tour folder under the system temp directory, outside the checkout.
+`/review-tour <pull request number|URL, or branch> [base <ref>] [since <sha>]` builds a **tour** of a change: a local, self-contained HTML page that leads a human reviewer through the change step by step, each step with an explanation and the real diffs from git. The page is written to a per-tour folder under the system temp directory, outside the checkout.
 
 A pull request is fetched through `gh`, with nothing to check out by hand. The base is the one you give, else the pull request's base, else the remote's default branch; the tool never assumes `main`.
+
+After the author addresses feedback, `since <sha>` (the earlier tour's head) gives a **follow-up tour** of only what changed since. If the author merged the base in meanwhile, the base's changes are left out. If that head was force-pushed away, the tour covers the full change and says why.
 
 ### Install
 
