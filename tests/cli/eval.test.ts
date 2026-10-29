@@ -164,3 +164,67 @@ test('the grader fails a tour that files the hidden change under wiring', () => 
     'fail  the hidden change sits in core logic: src/discount.ts is in wiring step 1',
   );
 });
+
+test('the grader fails a tour that keeps a proven file out of mechanical', () => {
+  const { repo, folder } = prepareFixture();
+  const [hidden, wiring] = soundPlan.steps;
+  const plan = {
+    intent,
+    steps: [
+      { ...hidden, files: ['src/discount.ts', 'src/cart.ts'], unprovenMechanical: ['src/cart.ts'] },
+      wiring,
+      { ...mechanicalStep, files: mechanicalStep.files.filter((file) => file !== 'src/cart.ts') },
+    ],
+  };
+  assert.equal(renderPlan(repo, folder, plan).status, 0);
+
+  const result = grade(folder);
+
+  assert.equal(result.status, 1);
+  assert.equal(
+    verdict(result.stdout, 'proven files'),
+    'fail  proven files sit in mechanical: src/cart.ts is in core-logic step 1',
+  );
+  assert.equal(verdict(result.stdout, 'the hidden change'), 'pass  the hidden change sits in core logic');
+});
+
+test('the grader fails a tour that skips, repeats or invents files, and one never rendered', () => {
+  const { folder } = prepareFixture();
+  const [hidden] = soundPlan.steps;
+  writePlan(folder, {
+    intent,
+    steps: [
+      { ...hidden, files: ['src/discount.ts', 'src/index.ts', 'src/basket.ts'], callouts: [] },
+      { ...mechanicalStep, files: [...mechanicalStep.files.filter((file) => file !== 'src/text.ts'), 'src/index.ts'] },
+    ],
+  });
+
+  const result = grade(folder);
+
+  assert.equal(result.status, 1);
+  assert.equal(
+    verdict(result.stdout, 'every file'),
+    'fail  every file appears exactly once: src/index.ts is in steps 1, 2; src/text.ts is in no step; src/basket.ts is not part of the change',
+  );
+  assert.equal(
+    verdict(result.stdout, 'render'),
+    `fail  render succeeded and the page exists: no page at ${path.join(folder, 'tour.html')}`,
+  );
+});
+
+test('the grader fails a run whose final plan no longer renders, and one where prepare never ran', () => {
+  const { repo, folder } = prepareFixture();
+  assert.equal(renderPlan(repo, folder, soundPlan).status, 0);
+  writePlan(folder, { ...soundPlan, intent: undefined });
+
+  const edited = grade(folder);
+  const unprepared = grade(path.join(sandbox.tmp, 'review-tour', 'shop-elsewhere'));
+
+  assert.equal(edited.status, 1);
+  assert.match(
+    verdict(edited.stdout, 'render') ?? '',
+    /^fail {2}render succeeded and the page exists: render rejects the final plan: the tour plan is invalid: - "intent" is missing/,
+  );
+  assert.equal(unprepared.status, 1);
+  assert.equal(verdict(unprepared.stdout, 'every file'), 'fail  every file appears exactly once: no captured change: prepare never ran');
+});
