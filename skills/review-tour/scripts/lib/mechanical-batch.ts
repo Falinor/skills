@@ -1,7 +1,7 @@
 // The proven mechanical batch: what the reviewer can tick as Viewed in one
 // go, after a single confirmation, without reading it.
 import type { TourPlan } from './plan.ts';
-import type { Change } from './work-folder.ts';
+import { isProven, type Change } from './work-folder.ts';
 
 /**
  * The files of the mechanical tier that carry a mechanical proof. The tier's
@@ -10,9 +10,12 @@ import type { Change } from './work-folder.ts';
  */
 export function mechanicalBatch(plan: TourPlan, change: Change): { proven: string[]; declared: string[] } {
   const byPath = new Map(change.files.map((file) => [file.path, file]));
-  const isProven = (file: string) => (byPath.get(file)?.proofs?.length ?? 0) > 0;
+  const proven = (file: string) => {
+    const changed = byPath.get(file);
+    return changed !== undefined && isProven(changed);
+  };
   const files = plan.steps.filter((step) => step.tier === 'mechanical').flatMap((step) => step.files);
-  return { proven: files.filter(isProven), declared: files.filter((file) => !isProven(file)) };
+  return { proven: files.filter(proven), declared: files.filter((file) => !proven(file)) };
 }
 
 /** The question `render` hands the reviewer for a pull request tour with a proven mechanical batch. */

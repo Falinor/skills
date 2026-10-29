@@ -7,7 +7,7 @@ import { describeFollowUp } from './follow-up.ts';
 import { inlineMarkdown, markdown } from './markdown.ts';
 import type { FileDiff, Hunk } from './patch.ts';
 import { tierLabels, tiers, type Callout, type Intent, type Step, type TourPlan, type Trace } from './plan.ts';
-import { proofLabels, type Change, type ChangedFile } from './work-folder.ts';
+import { describeProofs, isProven, type Change, type ChangedFile } from './work-folder.ts';
 
 export function escape(text: string): string {
   return text
@@ -197,10 +197,10 @@ function mechanicalTable(files: ChangedFile[], caption: string, proofOf: (file: 
 
 /** Mechanical files as tables, never diffs: proven files first, then declared generated ones apart. */
 function renderMechanical(files: ChangedFile[]): string {
-  const proven = files.filter((file) => file.proofs);
-  const declared = files.filter((file) => !file.proofs);
+  const proven = files.filter(isProven);
+  const declared = files.filter((file) => !isProven(file));
   return (
-    mechanicalTable(proven, 'Proven', (file) => file.proofs?.map((proof) => proofLabels[proof]).join(', ') ?? '') +
+    mechanicalTable(proven, 'Proven', describeProofs) +
     mechanicalTable(declared, 'Declared generated', () => 'declared, not proven')
   );
 }

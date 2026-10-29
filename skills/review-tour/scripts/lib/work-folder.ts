@@ -32,9 +32,19 @@ export const proofLabels: Record<Proof, string> = {
   'syntax-identical': 'syntax-identical',
 };
 
+/** The file carries at least one mechanical proof. */
+export function isProven(file: ChangedFile): boolean {
+  return (file.proofs?.length ?? 0) > 0;
+}
+
+/** The file's proofs as the reviewer reads them: `pure rename, whitespace only`. */
+export function describeProofs(file: ChangedFile): string {
+  return (file.proofs ?? []).map((proof) => proofLabels[proof]).join(', ');
+}
+
 /** A file may sit in the mechanical tier only with a proof, or when the base declares it generated. */
 export function mayBeMechanical(file: ChangedFile): boolean {
-  return (file.proofs?.length ?? 0) > 0 || file.generated === 'base';
+  return isProven(file) || file.generated === 'base';
 }
 
 export type Change = {
