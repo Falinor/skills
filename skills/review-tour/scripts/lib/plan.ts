@@ -78,8 +78,8 @@ function showsLine(diff: FileDiff, side: Callout['side'], line: number): boolean
   );
 }
 
-/** Why the callout's anchor is not a line its file's diff shows on that side, if it is not. */
-function misplacedAnchor({ file, line, side }: Callout, diff: FileDiff): string | undefined {
+/** Why the anchor (a callout's, a comment's) is not a line its file's diff shows on that side, if it is not. */
+export function misplacedAnchor({ file, line, side }: Pick<Callout, 'file' | 'line' | 'side'>, diff: FileDiff): string | undefined {
   if (showsLine(diff, side, line)) return undefined;
   const other = side === 'old' ? 'new' : 'old';
   return showsLine(diff, other, line)

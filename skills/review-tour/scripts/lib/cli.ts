@@ -1,3 +1,4 @@
+import { comment } from './comment.ts';
 import { UserError } from './errors.ts';
 import { prepare } from './prepare.ts';
 import { render } from './render.ts';
@@ -6,7 +7,7 @@ import { viewed } from './viewed.ts';
 
 type Command = (args: string[]) => void | Promise<void>;
 
-const commands: Record<string, Command> = { prepare, render, viewed };
+const commands: Record<string, Command> = { prepare, render, viewed, comment };
 
 const usage = 'usage: review-tour <command> [arguments]';
 
