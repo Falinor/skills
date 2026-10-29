@@ -95,7 +95,7 @@ export function prepare(args: string[]): void {
     base,
     mergeBase,
     head,
-    files: markGenerated(root, from, head, proveFiles(root, from, head, listed)),
+    files: markGenerated(root, mergeBase, from, head, proveFiles(root, from, head, listed)),
     ...(pullRequest && { pullRequest: { number: pullRequest.number, url: pullRequest.url } }),
     ...(followUp && { followUp }),
   };

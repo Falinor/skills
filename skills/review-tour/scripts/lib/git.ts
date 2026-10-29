@@ -45,23 +45,32 @@ function diff(cwd: string, args: string[], config: string[] = []): string {
 }
 
 /**
- * Each blob's content, decoded byte for byte (latin1) so that two different
- * blobs never read the same, whatever their encoding.
+ * Each blob's content, keyed by the object name asked for (a blob id or
+ * `<tree-ish>:<path>`); names that resolve to nothing are left out. Content
+ * is decoded byte for byte (latin1) so that two different blobs never read
+ * the same, whatever their encoding.
  */
-export function readBlobs(cwd: string, ids: string[]): Map<string, string> {
-  const unique = [...new Set(ids)];
+export function readBlobs(cwd: string, names: string[]): Map<string, string> {
+  const unique = [...new Set(names)];
   const blobs = new Map<string, string>();
   if (unique.length === 0) return blobs;
-  const result = spawnSync('git', ['cat-file', '--batch'], { cwd, input: `${unique.join('\n')}\n`, maxBuffer: 1024 ** 3 });
+  const result = spawnSync('git', ['cat-file', '--batch', '-z'], {
+    cwd,
+    input: unique.map((name) => `${name}\0`).join(''),
+    maxBuffer: 1024 ** 3,
+  });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new UserError(`git cat-file --batch failed:\n${result.stderr.toString().trim()}`);
-  // Each blob comes as `<id> blob <size>\n<content>\n`.
+  // Each object comes as `<id> <type> <size>\n<content>\n`, a missing one as `<name> missing\n`.
   let offset = 0;
-  for (const id of unique) {
+  for (const name of unique) {
     const headerEnd = result.stdout.indexOf(10, offset);
-    const size = Number(result.stdout.toString('latin1', offset, headerEnd).split(' ')[2]);
-    blobs.set(id, result.stdout.toString('latin1', headerEnd + 1, headerEnd + 1 + size));
-    offset = headerEnd + 1 + size + 1;
+    const header = result.stdout.toString('latin1', offset, headerEnd).split(' ');
+    offset = headerEnd + 1;
+    if (header.length !== 3) continue; // missing or ambiguous: no content follows
+    const size = Number(header[2]);
+    if (header[1] === 'blob') blobs.set(name, result.stdout.toString('latin1', offset, offset + size));
+    offset += size + 1;
   }
   return blobs;
 }

@@ -9,24 +9,28 @@ const absent = /^0+$/;
 /** An `@generated` marker in the first lines. */
 const hasHeader = (text: string | undefined) => text?.split('\n', 5).some((line) => line.includes('@generated')) ?? false;
 
-/** `files` with who declares each generated: the base, or only this change. */
-export function markGenerated(root: string, from: string, to: string, files: ChangedFile[]): ChangedFile[] {
+/**
+ * `files` (the range `from`..`to` in patch order) with who declares each
+ * generated: the base, read at `mergeBase` whatever `from` is, or only the
+ * change, read at `to`.
+ */
+export function markGenerated(root: string, mergeBase: string, from: string, to: string, files: ChangedFile[]): ChangedFile[] {
   const entries = listRawEntries(root, from, to);
-  const paths = files.flatMap((file) => (file.oldPath ? [file.oldPath, file.path] : [file.path]));
-  const byBase = linguistGenerated(root, from, paths);
-  const byChange = linguistGenerated(root, to, paths);
+  const pathsOf = (file: ChangedFile) => (file.oldPath ? [file.oldPath, file.path] : [file.path]);
+  const byBase = linguistGenerated(root, mergeBase, files.flatMap(pathsOf));
+  const byChange = linguistGenerated(root, to, files.map((file) => file.path));
+  // The base's version of a file is the one at the merge base, under its old path.
+  const baseNames = files.map((file) => `${mergeBase}:${file.oldPath ?? file.path}`);
   const texts = files.flatMap((file, index) =>
-    file.additions === null ? [] : [entries[index].oldBlob, entries[index].newBlob].filter((id) => !absent.test(id)),
+    file.additions === null ? [] : [baseNames[index], entries[index].newBlob].filter((name) => !absent.test(name)),
   );
   const blobs = readBlobs(root, texts);
 
   return files.map((file, index) => {
-    const { oldBlob, newBlob } = entries[index];
-    const filePaths = file.oldPath ? [file.oldPath, file.path] : [file.path];
-    if (filePaths.every((filePath) => byBase.has(filePath)) || hasHeader(blobs.get(oldBlob))) {
+    if (pathsOf(file).every((filePath) => byBase.has(filePath)) || hasHeader(blobs.get(baseNames[index]))) {
       return { ...file, generated: 'base' };
     }
-    if (byChange.has(file.path) || hasHeader(blobs.get(newBlob))) return { ...file, generated: 'change' };
+    if (byChange.has(file.path) || hasHeader(blobs.get(entries[index].newBlob))) return { ...file, generated: 'change' };
     return file;
   });
 }
