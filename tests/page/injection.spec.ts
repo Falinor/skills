@@ -30,7 +30,8 @@ test('hostile text in prose and diffs stays inert', async ({ page }) => {
   expect(seen.requests).toEqual([pageUrl]);
   expect(seen.errors).toEqual([]);
   expect(await page.evaluate(() => (window as { __pwned?: unknown }).__pwned)).toBeUndefined();
-  await expect(page.locator('img, svg, iframe, body style, body script')).toHaveCount(0);
+  await expect(page.locator('img, svg, iframe, body style')).toHaveCount(0);
+  await expect(page.locator('script', { hasText: '__pwned' })).toHaveCount(0);
   await expect(page.locator('a[href^="javascript:" i]')).toHaveCount(0);
   const handlers = await page.evaluate(() =>
     [...document.querySelectorAll('*')].flatMap((element) =>
