@@ -124,6 +124,26 @@ export function listMoves(cwd: string, from: string, to: string): FileMoves[] {
   return files;
 }
 
+/** The paths that `source`'s `.gitattributes` mark `linguist-generated`. */
+export function linguistGenerated(cwd: string, source: string, paths: string[]): Set<string> {
+  if (paths.length === 0) return new Set();
+  const result = spawnSync('git', ['check-attr', '-z', '--stdin', '--source', source, 'linguist-generated'], {
+    cwd,
+    input: paths.map((file) => `${file}\0`).join(''),
+    encoding: 'utf8',
+    maxBuffer: 1024 ** 3,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new UserError(`git check-attr failed:\n${result.stderr.trim()}`);
+  // Output is `path\0attribute\0value\0` per path.
+  const fields = result.stdout.split('\0');
+  const generated = new Set<string>();
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    if (fields[i + 2] === 'set' || fields[i + 2] === 'true') generated.add(fields[i]);
+  }
+  return generated;
+}
+
 /** The full patch from `from` to `to`, one `diff --git` section per changed file. */
 export function capturePatch(cwd: string, from: string, to: string): string {
   return diff(cwd, [from, to]);

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { describeFollowUp, followUpRange } from './follow-up.ts';
+import { markGenerated } from './generated.ts';
 import { capturePatch, commitOf, git, listChangedFiles, tryGit } from './git.ts';
 import { proveFiles } from './proofs.ts';
 import { followsPrTemplate, openPullRequest, pullRequestSelector } from './pull-request.ts';
@@ -53,13 +54,14 @@ export function prepare(args: string[]): void {
   // The captured range: the full change, or for a follow-up only what changed since the earlier head.
   const from = followUp?.from ?? mergeBase;
 
+  const listed = listChangedFiles(root, from, head);
   const change: Change = {
     repository: path.basename(root),
     target,
     base,
     mergeBase,
     head,
-    files: proveFiles(root, from, head, listChangedFiles(root, from, head)),
+    files: markGenerated(root, from, head, proveFiles(root, from, head, listed)),
     ...(pullRequest && { pullRequest: { number: pullRequest.number, url: pullRequest.url } }),
     ...(followUp && { followUp }),
   };
