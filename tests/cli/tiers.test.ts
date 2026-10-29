@@ -68,7 +68,7 @@ test('rejects steps out of tier order', () => {
 test('rejects a file in the mechanical tier without a proof, even one the change declares generated', () => {
   const { folder, repo } = prepareMixedChange();
   writePlan(folder, {
-    steps: [{ title: 'Noise', tier: 'mechanical', files: ['logic.ts', 'new.ts', 'dist/app.js', 'gen.ts'], explanation: '' }],
+    steps: [{ title: 'Renamed and regenerated', tier: 'mechanical', files: ['logic.ts', 'new.ts', 'dist/app.js', 'gen.ts'], explanation: '' }],
   });
 
   const result = sandbox.run(['render', folder], { cwd: repo.dir });
@@ -86,7 +86,7 @@ test('rejects unproven mechanical flags outside core logic or on files the step 
     steps: [
       { title: 'Logic', tier: 'core-logic', files: ['logic.ts'], unprovenMechanical: ['gen.ts'], explanation: '' },
       { title: 'Generated', tier: 'wiring', files: ['gen.ts'], unprovenMechanical: ['gen.ts'], explanation: '' },
-      { title: 'Noise', tier: 'mechanical', files: ['new.ts', 'dist/app.js'], explanation: '' },
+      { title: 'Renamed and regenerated', tier: 'mechanical', files: ['new.ts', 'dist/app.js'], explanation: '' },
     ],
   });
 
@@ -103,7 +103,7 @@ test('presents core logic, then wiring, then the mechanical tier as tables witho
     steps: [
       { title: 'Regenerate', tier: 'core-logic', files: ['gen.ts'], unprovenMechanical: ['gen.ts'], explanation: '' },
       { title: 'Raise the limit', tier: 'wiring', files: ['logic.ts'], explanation: '' },
-      { title: 'Noise', tier: 'mechanical', files: ['new.ts', 'dist/app.js'], explanation: 'Proven or declared.' },
+      { title: 'Renamed and regenerated', tier: 'mechanical', files: ['new.ts', 'dist/app.js'], explanation: 'Proven or declared.' },
     ],
   });
 
@@ -136,7 +136,7 @@ test('rejects callouts in the mechanical tier, which shows no diffs to hold them
     steps: [
       { title: 'Logic', tier: 'core-logic', files: ['logic.ts', 'gen.ts'], explanation: '' },
       {
-        title: 'Noise',
+        title: 'Renamed and regenerated',
         tier: 'mechanical',
         files: ['new.ts', 'dist/app.js'],
         explanation: '',

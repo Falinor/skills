@@ -11,7 +11,7 @@ argument-hint: "<pull request number|URL, or branch> [base <ref>] [since <sha>]"
 
 Build a **tour** of a **change** so a human reviewer can read it in a sensible order: a local HTML page whose **steps** each hold the files that express one concept, with an explanation and the real diffs. The reviewer judges the change; the tour helps them understand it.
 
-The tool is `scripts/review-tour.mjs`, next to this SKILL.md. Run it as `node <skill-dir>/scripts/review-tour.mjs <subcommand> …` from the reviewed repository, where `<skill-dir>` is the directory holding this SKILL.md (in Claude Code, `${CLAUDE_SKILL_DIR}`). When it stops with a message (a missing requirement, no base, an unknown branch, a pull request gh can't read), relay the message to the reviewer and stop.
+The tool is `scripts/review-tour.mjs`, next to this SKILL.md. Run it as `node <skill-dir>/scripts/review-tour.mjs <subcommand> …` from the reviewed repository, where `<skill-dir>` is the directory holding this SKILL.md. When it stops with a message (a missing requirement, no base, an unknown branch, a pull request gh can't read), relay the message to the reviewer and stop.
 
 ## Steps
 
