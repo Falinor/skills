@@ -25,6 +25,20 @@ export type Change = {
   files: ChangedFile[];
   /** Set when the target is a GitHub pull request. */
   pullRequest?: { number: number; url: string };
+  /** Set for a follow-up tour. */
+  followUp?: FollowUp;
+};
+
+/** A follow-up tour: what changed since an earlier tour's head. */
+export type FollowUp = {
+  /** The earlier tour's head, as the reviewer gave it. */
+  since: string;
+  /** Where the captured patch starts (a commit or a tree); absent when the tour covers the full change. */
+  from?: string;
+  /** Set when `from` is the earlier head's tree replayed onto the new merge base: the base was merged in since. */
+  replayed?: boolean;
+  /** Why the tour covers the full change; set exactly when `from` is absent. */
+  fallback?: string;
 };
 
 export const workFolderFiles = {
