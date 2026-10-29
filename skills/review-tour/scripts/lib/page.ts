@@ -18,54 +18,74 @@ export function escape(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Colours are theme tokens: light by default, dark when the system asks for
+// it, and either one when the reader picks it with the theme switch.
+const lightTheme =
+  'color-scheme: light; --bg: #ffffff; --text: #1f2328; --muted: #59636e; --border: #d1d9e0; --surface: #f6f8fa; ' +
+  '--link: #0969da; --add: #dafbe1; --del: #ffebe9; --mark: #fff8c5; --mark-edge: #9a6700; --danger: #b42318; ' +
+  '--flag-bg: #fff3cd; --flag-text: #664d03;';
+const darkTheme =
+  'color-scheme: dark; --bg: #0d1117; --text: #e6edf3; --muted: #9198a1; --border: #3d444d; --surface: #151b23; ' +
+  '--link: #4493f8; --add: #12261e; --del: #25171c; --mark: #272115; --mark-edge: #d29922; --danger: #ff7b72; ' +
+  '--flag-bg: #3b2e0a; --flag-text: #e3b341;';
+
 const styles = `
-body { font: 16px/1.5 system-ui, sans-serif; margin: 0; display: grid; grid-template-columns: 17rem minmax(0, 1fr); }
+:root { ${lightTheme} }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { ${darkTheme} } }
+:root[data-theme="dark"] { ${darkTheme} }
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0; display: grid; grid-template-columns: 17rem minmax(0, 1fr); background: var(--bg); color: var(--text); }
+a { color: var(--link); }
 .content { max-width: 72rem; min-width: 0; padding: 1rem 1.5rem; }
-.sidebar { position: sticky; top: 0; align-self: start; box-sizing: border-box; height: 100vh; overflow-y: auto; padding: 1rem; border-right: 1px solid #ccc; font-size: 0.9rem; }
+.sidebar { position: sticky; top: 0; align-self: start; box-sizing: border-box; height: 100vh; overflow-y: auto; padding: 1rem; background: var(--surface); border-right: 1px solid var(--border); font-size: 0.9rem; }
 .sidebar .progress { margin-top: 0; font-weight: 600; }
-.nav-tier { margin: 1rem 0 0.25rem; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+.nav-tier { margin: 1rem 0 0.25rem; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; color: var(--muted); }
 .nav-steps { list-style: none; margin: 0; padding: 0; }
-.nav-steps a { display: block; padding: 0.2rem 0.5rem; border-left: 3px solid transparent; text-decoration: none; overflow-wrap: anywhere; }
-.nav-steps a[aria-current="step"] { border-left-color: currentColor; font-weight: 600; }
-.nav-steps .number { display: inline-block; min-width: 1.5em; font-variant-numeric: tabular-nums; }
+.nav-steps a { display: block; padding: 0.2rem 0.5rem; border-left: 3px solid transparent; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+.nav-steps a:hover { background: var(--bg); }
+.nav-steps a[aria-current="step"] { border-left-color: var(--link); background: var(--bg); font-weight: 600; }
+.nav-steps .number { display: inline-block; min-width: 1.5em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.theme-switch { margin-top: 1.5rem; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.75rem; cursor: pointer; }
+.theme-switch::before { content: "○ "; }
+.theme-switch[aria-pressed="true"]::before { content: "● "; }
 @media (max-width: 50rem) {
   body { display: block; }
-  .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid #ccc; }
+  .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
 }
 code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.step { scroll-margin-top: 1rem; border-top: 1px solid #ccc; padding-top: 1rem; }
+.step { scroll-margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
 .explanation { white-space: pre-wrap; }
 .file-path { font-size: 1rem; }
 .diff { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 .diff td { padding: 0 0.5rem; vertical-align: top; }
-.diff .number { color: #888; text-align: right; user-select: none; width: 1%; }
+.diff .number { color: var(--muted); text-align: right; user-select: none; width: 1%; }
 .diff .code { white-space: pre-wrap; word-break: break-all; }
-.diff .add { background: #e6ffec; }
-.diff .del { background: #ffebe9; }
-.diff .hunk-header td, .diff .note td { color: #888; }
-.intent { border: 1px solid #ccc; border-radius: 6px; padding: 0 1rem; margin-bottom: 1rem; }
+.diff .add { background: var(--add); }
+.diff .del { background: var(--del); }
+.diff .hunk-header td, .diff .note td, .note { color: var(--muted); }
+.intent { border: 1px solid var(--border); border-radius: 6px; padding: 0 1rem; margin-bottom: 1rem; }
 .intent .why { white-space: pre-wrap; font-size: 1.1rem; }
-.intent .visual { background: #f6f8fa; padding: 0.75rem; overflow-x: auto; }
-.door.one-way { color: #b42318; font-weight: 600; }
-.diff .callout td { background: #fff8c5; border-left: 4px solid #9a6700; padding: 0.25rem 0.5rem; font-family: system-ui, sans-serif; }
+.intent .visual { background: var(--surface); padding: 0.75rem; overflow-x: auto; }
+.door.one-way { color: var(--danger); font-weight: 600; }
+.diff .callout td { background: var(--mark); border-left: 4px solid var(--mark-edge); padding: 0.25rem 0.5rem; font-family: system-ui, sans-serif; }
 .callout .tag { font-weight: bold; margin-right: 0.5rem; }
-.pseudocode pre { background: #f6f8fa; padding: 0.5rem; overflow-x: auto; }
+.pseudocode pre { background: var(--surface); padding: 0.5rem; overflow-x: auto; }
 .trace table { border-collapse: collapse; }
-.trace th, .trace td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
-.trace .diverges { background: #fff8c5; }
-.flag { font: 600 0.8rem system-ui, sans-serif; background: #fff3cd; color: #664d03; border-radius: 0.25rem; padding: 0 0.4rem; }
+.trace th, .trace td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
+.trace .diverges { background: var(--mark); }
+.flag { font: 600 0.8rem system-ui, sans-serif; background: var(--flag-bg); color: var(--flag-text); border-radius: 0.25rem; padding: 0 0.4rem; }
 .mechanical { border-collapse: collapse; margin: 0.5rem 0 1rem; }
 .mechanical caption { text-align: left; font-weight: 600; }
-.mechanical th, .mechanical td { border-bottom: 1px solid #ddd; padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; }
+.mechanical th, .mechanical td { border-bottom: 1px solid var(--border); padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; }
 .mechanical .count { text-align: right; }
 .tier:last-child .step:last-child { min-height: calc(100vh - 2rem); }
-a:focus-visible, button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 `;
 
 // Navigation: j and k move to the next and previous step from the step being
 // read (the last one whose top reached the top of the viewport), through the
 // `#step-N` link; the sidebar marks that step and counts it. The last step is
-// tall enough to reach the top. It never writes markup.
+// tall enough to reach the top. The theme switch overrides the system theme.
+// The script never writes markup.
 const script = `addEventListener('DOMContentLoaded', () => {
   const steps = [...document.querySelectorAll('main .step')];
   const links = [...document.querySelectorAll('#sidebar a[href^="#step-"]')];
@@ -93,6 +113,17 @@ const script = `addEventListener('DOMContentLoaded', () => {
     else return;
     event.preventDefault();
   });
+  const root = document.documentElement;
+  const themeSwitch = document.getElementById('theme-switch');
+  const systemDark = matchMedia('(prefers-color-scheme: dark)');
+  const isDark = () => (root.dataset.theme ? root.dataset.theme === 'dark' : systemDark.matches);
+  const showTheme = () => themeSwitch.setAttribute('aria-pressed', String(isDark()));
+  themeSwitch.addEventListener('click', () => {
+    root.dataset.theme = isDark() ? 'light' : 'dark';
+    showTheme();
+  });
+  systemDark.addEventListener('change', showTheme);
+  showTheme();
 });`;
 const scriptHash = createHash('sha256').update(script).digest('base64');
 
@@ -249,7 +280,8 @@ function renderSidebar(plan: TourPlan): string {
   return (
     `<nav class="sidebar" id="sidebar" aria-label="Steps">` +
     `<p class="progress"><span id="progress-count">0</span> of ${total} ${total === 1 ? 'step' : 'steps'}</p>` +
-    `${groups.join('')}</nav>`
+    `${groups.join('')}` +
+    `<button type="button" class="theme-switch" id="theme-switch" aria-pressed="false">Dark theme</button></nav>`
   );
 }
 

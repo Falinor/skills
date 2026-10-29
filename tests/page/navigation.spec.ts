@@ -22,15 +22,29 @@ test.beforeAll(() => {
     { 'helper.txt': 'helpers.txt' },
   );
   writePlan(folder, {
+    intent: {
+      why: 'Expired tokens start sessions; see [the issue](https://example.invalid/1).',
+      visual: 'startSession(token)\n  checkToken(token)',
+      mergeDanger: { door: 'one-way', blastRadius: '`sign-in`' },
+    },
     steps: [
       {
         title: titles[0],
         tier: 'core-logic',
         files: ['tokens.txt'],
-        explanation: 'Checks tokens.',
+        explanation: 'Checks **tokens** with `check`.',
+        questions: ['Is a day the right expiry?'],
+        pseudocode: 'if expired(token): reject',
+        trace: { input: '`token` from yesterday', old: ['accepted'], new: ['rejected'] },
         callouts: [{ file: 'tokens.txt', line: 2, side: 'new', tag: 'Subtle', text: 'Off by one.' }],
       },
-      { title: titles[1], tier: 'core-logic', files: ['sessions.txt'], explanation: 'Expires sessions.' },
+      {
+        title: titles[1],
+        tier: 'core-logic',
+        files: ['sessions.txt'],
+        explanation: 'Expires sessions.',
+        unprovenMechanical: ['sessions.txt'],
+      },
       { title: titles[2], tier: 'wiring', files: ['wiring.txt'], explanation: 'Registers the check.' },
       { title: titles[3], tier: 'mechanical', files: ['helpers.txt'], explanation: 'Renamed.' },
     ],
@@ -111,6 +125,67 @@ test('every step is reachable from the sidebar with Tab and Enter, with a visibl
     await expectAtStep(page, index + 1);
   }
 });
+
+/**
+ * Every visible text whose contrast with the background behind it is below
+ * WCAG AA (4.5:1), and the luminance of the page background.
+ */
+function readability(page: Page) {
+  return page.evaluate(() => {
+    const channels = (color: string) => (color.match(/[\d.]+/g) ?? []).map(Number);
+    const luminance = (color: string) => {
+      const [r, g, b] = channels(color).map((value) => {
+        const c = value / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const backgroundOf = (element: Element | null): string => {
+      for (; element; element = element.parentElement) {
+        const color = getComputedStyle(element).backgroundColor;
+        if ((channels(color)[3] ?? 1) > 0) return color;
+      }
+      return 'rgb(255, 255, 255)';
+    };
+    const unreadable = [...document.querySelectorAll('body *')].flatMap((element) => {
+      const text = [...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join('').trim();
+      if (text === '' || element.getClientRects().length === 0) return [];
+      const [a, b] = [luminance(getComputedStyle(element).color), luminance(backgroundOf(element))];
+      const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      return contrast < 4.5 ? [`${element.tagName.toLowerCase()}.${element.className} "${text.slice(0, 20)}" ${contrast.toFixed(2)}`] : [];
+    });
+    return { unreadable, background: luminance(backgroundOf(document.body)) };
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test.describe(`with a ${scheme} system theme`, () => {
+    test.use({ colorScheme: scheme });
+
+    test(`the page follows it and every text stays readable`, async ({ page }) => {
+      await page.goto(pageUrl);
+
+      const { unreadable, background } = await readability(page);
+      expect(unreadable).toEqual([]);
+      if (scheme === 'dark') expect(background).toBeLessThan(0.05);
+      else expect(background).toBeGreaterThan(0.9);
+      await expect(page.getByRole('button', { name: 'Dark theme' })).toHaveAttribute('aria-pressed', String(scheme === 'dark'));
+    });
+
+    test('the theme switch turns to the other theme, every text still readable', async ({ page }) => {
+      await page.goto(pageUrl);
+      const themeSwitch = page.getByRole('button', { name: 'Dark theme' });
+
+      await themeSwitch.click();
+
+      const { unreadable, background } = await readability(page);
+      expect(unreadable).toEqual([]);
+      if (scheme === 'dark') expect(background).toBeGreaterThan(0.9);
+      else expect(background).toBeLessThan(0.05);
+      await expect(themeSwitch).toHaveAttribute('aria-pressed', String(scheme !== 'dark'));
+    });
+  });
+}
 
 test('the page runs only its own script, allowed by hash', async ({ page }) => {
   await page.goto(pageUrl);
