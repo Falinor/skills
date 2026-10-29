@@ -14,7 +14,25 @@ export type ChangedFile = {
   /** null for binary files. */
   additions: number | null;
   deletions: number | null;
+  /** Mechanical proofs found by `prepare`; absent when there are none. */
+  proofs?: Proof[];
+  /** Who declares the file generated: the base (trusted, listed apart) or this change (read like any other file). */
+  generated?: 'base' | 'change';
 };
+
+/** Tool evidence that a file's change preserves behaviour. */
+export type Proof = 'pure-move' | 'pure-rename' | 'whitespace-only';
+
+export const proofLabels: Record<Proof, string> = {
+  'pure-move': 'pure move',
+  'pure-rename': 'pure rename',
+  'whitespace-only': 'whitespace only',
+};
+
+/** A file may sit in the mechanical tier only with a proof, or when the base declares it generated. */
+export function mayBeMechanical(file: ChangedFile): boolean {
+  return (file.proofs?.length ?? 0) > 0 || file.generated === 'base';
+}
 
 export type Change = {
   repository: string;
@@ -44,6 +62,7 @@ export type FollowUp = {
 export const workFolderFiles = {
   change: 'change.json',
   patch: 'change.patch',
+  toRead: 'to-read.patch',
   plan: 'plan.json',
   page: 'tour.html',
   pullRequest: 'pull-request.json',

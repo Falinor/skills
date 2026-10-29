@@ -17,8 +17,8 @@ test.beforeAll(() => {
   });
   writePlan(folder, {
     steps: [
-      { title: 'First', files: ['first.txt'], explanation: 'The first file.' },
-      { title: 'Second', files: ['second.txt'], explanation: 'The second file.' },
+      { title: 'First', tier: 'core-logic', files: ['first.txt'], explanation: 'The first file.' },
+      { title: 'Second', tier: 'core-logic', files: ['second.txt'], explanation: 'The second file.' },
     ],
   });
   const result = sandbox.run(['render', folder], { cwd: repo.dir });
@@ -31,7 +31,8 @@ test.afterAll(() => sandbox.cleanup());
 test('the page loads with every step', async ({ page }) => {
   await page.goto(pageUrl);
 
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Intent', 'Step 1 · First', 'Step 2 · Second']);
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Intent', 'Core logic']);
+  await expect(page.getByRole('heading', { level: 3 })).toHaveText(['Step 1 · First', 'Step 2 · Second']);
 });
 
 test('#step-N lands on its step', async ({ page }) => {

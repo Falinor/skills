@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => sandbox.cleanup());
 
-const steps = [{ title: 'A', files: ['a.txt'], explanation: '' }];
+const steps = [{ title: 'A', tier: 'core-logic', files: ['a.txt'], explanation: '' }];
 
 function renderPlan(plan: unknown) {
   const { folder, repo } = prepareChange(sandbox, { trunk: {}, feature: { 'a.txt': 'a\n' } });
@@ -78,7 +78,7 @@ test('prints the intent and the step list with #step-N links once the page is wr
       visual: 'startSession(token)\n  validateToken(token)',
       mergeDanger: { door: 'one-way', blastRadius: 'sign-in' },
     },
-    steps: [{ title: 'Check tokens', files: ['a.txt'], explanation: '' }],
+    steps: [{ title: 'Check tokens', tier: 'core-logic', files: ['a.txt'], explanation: '' }],
   });
 
   assert.equal(result.status, 0, result.stderr);
@@ -110,7 +110,7 @@ test('prints plan text without terminal control characters, each step on one lin
       visual: '```diff\n+ added\n```',
       mergeDanger: { door: 'two-way', blastRadius: 'none' },
     },
-    steps: [{ title: 'Two\nlines \u0007here', files: ['a.txt'], explanation: '' }],
+    steps: [{ title: 'Two\nlines \u0007here', tier: 'core-logic', files: ['a.txt'], explanation: '' }],
   });
 
   assert.equal(result.status, 0, result.stderr);
