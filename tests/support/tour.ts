@@ -25,8 +25,17 @@ export function prepareChange(
   return { repo, folder: path.join(sandbox.tmp, 'review-tour', 'project-feature') };
 }
 
-export function writePlan(folder: string, plan: unknown): void {
-  fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(plan, null, 2));
+/** A valid intent, for plans whose test is not about the intent. */
+export const sampleIntent = {
+  why: 'Explain why the change exists.',
+  visual: 'start()\n  finish()',
+  mergeDanger: { door: 'two-way', blastRadius: 'none' },
+};
+
+/** Writes the tour plan, adding `sampleIntent` unless the plan has an `intent` key. */
+export function writePlan(folder: string, plan: object): void {
+  const full = 'intent' in plan ? plan : { intent: sampleIntent, ...plan };
+  fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(full, null, 2));
 }
 
 /** The visible text of the `#step-N` section of a rendered page. */

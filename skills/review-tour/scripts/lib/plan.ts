@@ -9,7 +9,14 @@ export type Step = {
   explanation: string;
 };
 
-export type TourPlan = { steps: Step[] };
+/** The opening of a tour: why the change exists, one visual of its shape, and its merge danger. */
+export type Intent = {
+  why: string;
+  visual: string;
+  mergeDanger: { door: 'one-way' | 'two-way'; blastRadius: string };
+};
+
+export type TourPlan = { intent: Intent; steps: Step[] };
 
 function listSteps(numbers: number[]): string {
   return `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
@@ -39,6 +46,7 @@ type Rule = (plan: TourPlan, change: Change) => string[];
 const rules: Rule[] = [checkCoverage];
 
 const isText = (value: unknown): value is string => typeof value === 'string';
+const isFilled = (value: unknown): value is string => isText(value) && value.trim() !== '';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -57,9 +65,31 @@ function checkShape(raw: unknown): string[] {
   });
 }
 
+function checkIntent(raw: unknown): string[] {
+  if (!isRecord(raw)) return [];
+  if (raw.intent === undefined) {
+    return ['"intent" is missing: the tour opens with why the change exists, one visual and its merge danger'];
+  }
+  const intent = raw.intent;
+  if (!isRecord(intent)) return ['"intent" must be an object with "why", "visual" and "mergeDanger"'];
+  const violations: string[] = [];
+  if (!isFilled(intent.why)) violations.push('intent: "why" must be text');
+  else {
+    const lines = intent.why.trim().split('\n').length;
+    if (lines > 3) violations.push(`intent: "why" has ${lines} lines; keep it to three at most`);
+  }
+  if (!isFilled(intent.visual)) violations.push('intent: "visual" must be text');
+  const danger = isRecord(intent.mergeDanger) ? intent.mergeDanger : {};
+  if (danger.door !== 'one-way' && danger.door !== 'two-way') {
+    violations.push('intent: "mergeDanger.door" must be "one-way" or "two-way"');
+  }
+  if (!isFilled(danger.blastRadius)) violations.push('intent: "mergeDanger.blastRadius" must be text');
+  return violations;
+}
+
 /** The plan, once it is well formed and obeys every rule; otherwise stops with every violation. */
 export function validatePlan(raw: unknown, change: Change): TourPlan {
-  const shape = checkShape(raw);
+  const shape = [...checkIntent(raw), ...checkShape(raw)];
   const violations = shape.length > 0 ? shape : rules.flatMap((rule) => rule(raw as TourPlan, change));
   if (violations.length > 0) {
     throw new UserError(`the tour plan is invalid:\n${violations.map((violation) => `- ${violation}`).join('\n')}`);
