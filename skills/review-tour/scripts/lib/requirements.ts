@@ -4,6 +4,7 @@ import { UserError } from './errors.ts';
 // Node itself is checked by the plain-JS launcher, before any TypeScript loads.
 const installHints = {
   git: 'Install it from https://git-scm.com/downloads.',
+  gh: 'Pull requests are read through the GitHub CLI: install it from https://cli.github.com/, then run `gh auth login`.',
 } as const;
 
 export type Tool = keyof typeof installHints;

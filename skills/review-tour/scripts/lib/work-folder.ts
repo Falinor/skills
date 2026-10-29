@@ -23,6 +23,8 @@ export type Change = {
   mergeBase: string;
   head: string;
   files: ChangedFile[];
+  /** Set when the target is a GitHub pull request. */
+  pullRequest?: { number: number; url: string };
 };
 
 export const workFolderFiles = {
