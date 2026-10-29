@@ -1,7 +1,7 @@
 // Builds the tour page as one self-contained HTML file. Every piece of text
 // from the tour plan or the patch goes through `escape`.
 import type { FileDiff, Hunk } from './patch.ts';
-import type { Intent, TourPlan } from './plan.ts';
+import type { Callout, Intent, Step, TourPlan, Trace } from './plan.ts';
 import type { Change } from './work-folder.ts';
 
 export function escape(text: string): string {
@@ -30,6 +30,12 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .intent .why { white-space: pre-wrap; font-size: 1.1rem; }
 .intent .visual { background: #f6f8fa; padding: 0.75rem; overflow-x: auto; }
 .door.one-way { color: #b42318; font-weight: 600; }
+.diff .callout td { background: #fff8c5; border-left: 4px solid #9a6700; padding: 0.25rem 0.5rem; font-family: system-ui, sans-serif; }
+.callout .tag { font-weight: bold; margin-right: 0.5rem; }
+.pseudocode pre { background: #f6f8fa; padding: 0.5rem; overflow-x: auto; }
+.trace table { border-collapse: collapse; }
+.trace th, .trace td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
+.trace .diverges { background: #fff8c5; }
 `;
 
 export const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
@@ -50,25 +56,68 @@ function renderIntent({ why, visual, mergeDanger }: Intent): string {
 
 const signs = { add: '+', del: '-', context: ' ', note: '' } as const;
 
-function renderHunk(hunk: Hunk): string {
+function renderCallout(callout: Callout): string {
+  return (
+    `<tr class="callout"><td colspan="3"><span class="tag">${escape(callout.tag)}</span>` +
+    `${escape(callout.text)}</td></tr>`
+  );
+}
+
+function renderHunk(hunk: Hunk, callouts: Callout[]): string {
   const rows = hunk.lines.map(
     (line) =>
       `<tr class="${line.kind}"><td class="number">${line.oldNumber ?? ''}</td>` +
       `<td class="number">${line.newNumber ?? ''}</td>` +
-      `<td class="code">${escape(signs[line.kind] + line.text)}</td></tr>`,
+      `<td class="code">${escape(signs[line.kind] + line.text)}</td></tr>` +
+      callouts
+        .filter((callout) => callout.line === (callout.side === 'old' ? line.oldNumber : line.newNumber))
+        .map(renderCallout)
+        .join(''),
   );
   return `<tbody><tr class="hunk-header"><td colspan="3">${escape(hunk.header)}</td></tr>${rows.join('')}</tbody>`;
 }
 
-function renderFile({ file, hunks, binary }: FileDiff): string {
+function renderFile({ file, hunks, binary }: FileDiff, callouts: Callout[]): string {
   const name = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
   const stats = file.additions === null ? 'binary' : `+${file.additions} −${file.deletions}`;
   const body = binary
     ? '<p class="note">Binary file, not shown.</p>'
     : hunks.length > 0
-      ? `<table class="diff">${hunks.map(renderHunk).join('')}</table>`
+      ? `<table class="diff">${hunks.map((hunk) => renderHunk(hunk, callouts)).join('')}</table>`
       : '<p class="note">No content change.</p>';
   return `<article class="file"><h3 class="file-path"><code>${escape(name)}</code> <span class="stats">${stats}</span></h3>${body}</article>`;
+}
+
+/** The old and new runs side by side, row by row, each row marked = or ≠. */
+function renderTrace(trace: Trace): string {
+  const rows = Array.from({ length: Math.max(trace.old.length, trace.new.length) }, (_, index) => {
+    const [before, after] = [trace.old[index] ?? '', trace.new[index] ?? ''];
+    const [mark, label] = before === after ? ['=', 'same'] : ['≠', 'diverges'];
+    return (
+      `<tr class="${label}"><th scope="row" title="${label}">${mark}</th>` +
+      `<td>${escape(before)}</td><td>${escape(after)}</td></tr>`
+    );
+  });
+  return (
+    `<div class="trace"><h3>Old versus new</h3><p>Input: ${escape(trace.input)}</p>` +
+    `<table><thead><tr><td></td><th scope="col">Old</th><th scope="col">New</th></tr></thead>` +
+    `<tbody>${rows.join('')}</tbody></table></div>`
+  );
+}
+
+/** The step's reading aids, shown between its explanation and its diffs. */
+function renderAids(step: Step): string {
+  const questions = step.questions ?? [];
+  const parts: string[] = [];
+  if (step.pseudocode !== undefined) {
+    parts.push(`<div class="pseudocode"><h3>Pseudocode</h3><pre><code>${escape(step.pseudocode)}</code></pre></div>`);
+  }
+  if (step.trace !== undefined) parts.push(renderTrace(step.trace));
+  if (questions.length > 0) {
+    const items = questions.map((question) => `<li>${escape(question)}</li>`).join('');
+    parts.push(`<div class="questions"><h3>Reviewer questions</h3><ul>${items}</ul></div>`);
+  }
+  return parts.join('');
 }
 
 export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, FileDiff>): string {
@@ -78,7 +127,15 @@ export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, Fi
       `<section class="step" id="${id}" aria-labelledby="${id}-title">` +
       `<h2 id="${id}-title"><a href="#${id}">Step ${index + 1}</a> · ${escape(step.title)}</h2>` +
       `<div class="explanation">${escape(step.explanation)}</div>` +
-      step.files.map((file) => renderFile(diffs.get(file) as FileDiff)).join('') +
+      renderAids(step) +
+      step.files
+        .map((file) =>
+          renderFile(
+            diffs.get(file) as FileDiff,
+            (step.callouts ?? []).filter((callout) => callout.file === file),
+          ),
+        )
+        .join('') +
       `</section>`
     );
   });

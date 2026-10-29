@@ -41,9 +41,10 @@ export function render(args: string[]): void {
   const folder = path.resolve(positionals[0]);
 
   const { change, patch } = readCapture(folder);
-  const plan = validatePlan(readPlan(folder), change);
+  const diffs = cutPatch(patch, change.files);
+  const plan = validatePlan(readPlan(folder), change, diffs);
   const page = path.join(folder, workFolderFiles.page);
-  fs.writeFileSync(page, renderPage(change, plan, cutPatch(patch, change.files)));
+  fs.writeFileSync(page, renderPage(change, plan, diffs));
 
   const url = pathToFileURL(page).href;
   console.log(`Page: ${page}\nOpen: ${url}\n\n${handover(plan, url)}`);
