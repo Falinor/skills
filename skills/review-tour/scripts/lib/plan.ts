@@ -47,6 +47,8 @@ export type Intent = {
 
 export type TourPlan = { intent: Intent; steps: Step[] };
 
+export const doors: Record<Intent['mergeDanger']['door'], string> = { 'one-way': 'One-way door', 'two-way': 'Two-way door' };
+
 function listSteps(numbers: number[]): string {
   return `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
 }

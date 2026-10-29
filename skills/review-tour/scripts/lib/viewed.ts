@@ -5,12 +5,11 @@ import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { graphql } from './gh.ts';
 import { mechanicalBatch } from './mechanical-batch.ts';
-import { cutPatch } from './patch.ts';
-import { validatePlan, type TourPlan } from './plan.ts';
+import type { TourPlan } from './plan.ts';
 import { printablePath } from './printable.ts';
-import { readPlan } from './render.ts';
 import { freshPullRequest } from './stale-tour.ts';
-import { readCapture, type Change } from './work-folder.ts';
+import { readTour } from './tour.ts';
+import type { Change } from './work-folder.ts';
 
 const usage = [
   'usage: review-tour viewed <work-folder> <steps|mechanical>',
@@ -96,8 +95,7 @@ function tick(host: string, id: string, files: string[], number: number | undefi
 export function viewed(args: string[]): void {
   const { positionals } = parseCommandArgs(args, {}, usage, 2);
   const folder = path.resolve(positionals[0]);
-  const { change, patch } = readCapture(folder);
-  const plan = validatePlan(readPlan(folder), change, cutPatch(patch, change.files));
+  const { change, plan } = readTour(folder);
   const batch = positionals[1] === 'mechanical' ? mechanicalBatch(plan, change) : undefined;
   const files = batch ? batch.proven : chosenFiles(plan, positionals[1]);
 

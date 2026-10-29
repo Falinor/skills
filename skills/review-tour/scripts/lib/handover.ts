@@ -1,8 +1,7 @@
 // What the chat shows once the page is written: the intent, then each step
 // with its #step-N link. Plan text loses its control characters so it can't
 // drive the reviewer's terminal.
-import { doors } from './page.ts';
-import type { TourPlan } from './plan.ts';
+import { doors, type TourPlan } from './plan.ts';
 
 const printable = (text: string) => text.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 const oneLine = (text: string) => printable(text).replace(/\s+/g, ' ').trim();

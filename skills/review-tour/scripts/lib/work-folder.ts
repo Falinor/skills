@@ -108,6 +108,17 @@ export function writePullRequestText(folder: string, text: PullRequestText): voi
   fs.writeFileSync(path.join(folder, workFolderFiles.pullRequest), `${JSON.stringify(text, null, 2)}\n`);
 }
 
+/** The tour plan the agent wrote in `folder`, as parsed JSON, not yet validated. */
+export function readPlan(folder: string): unknown {
+  const file = path.join(folder, workFolderFiles.plan);
+  if (!fs.existsSync(file)) throw new UserError(`no tour plan at ${file}; write it first.`);
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new UserError(`${workFolderFiles.plan} is not valid JSON: ${(error as Error).message}`);
+  }
+}
+
 /** What `prepare` captured in `folder`. */
 export function readCapture(folder: string): { change: Change; patch: string } {
   const changeFile = path.join(folder, workFolderFiles.change);

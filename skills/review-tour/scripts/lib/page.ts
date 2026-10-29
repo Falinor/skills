@@ -4,19 +4,11 @@
 // Content-Security-Policy allows that script by hash and nothing else.
 import { createHash } from 'node:crypto';
 import { describeFollowUp } from './follow-up.ts';
+import { escape } from './html.ts';
 import { inlineMarkdown, markdown } from './markdown.ts';
 import type { FileDiff, Hunk } from './patch.ts';
-import { tierLabels, tiers, type Callout, type Intent, type Step, type TourPlan, type Trace } from './plan.ts';
+import { doors, tierLabels, tiers, type Callout, type Intent, type Step, type TourPlan, type Trace } from './plan.ts';
 import { describeProofs, isProven, type Change, type ChangedFile } from './work-folder.ts';
-
-export function escape(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 // Colours are theme tokens: light by default, dark when the system asks for
 // it, and either one when the reader picks it with the theme switch.
@@ -126,8 +118,6 @@ const script = `addEventListener('DOMContentLoaded', () => {
   showTheme();
 });`;
 const scriptHash = createHash('sha256').update(script).digest('base64');
-
-export const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
 
 /** The opening of the page: why the change exists, one visual of its shape, and its merge danger. */
 function renderIntent({ why, visual, mergeDanger }: Intent): string {
