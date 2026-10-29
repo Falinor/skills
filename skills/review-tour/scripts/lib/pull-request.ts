@@ -25,6 +25,11 @@ export function pullRequestSelector(target: string): string | undefined {
   return /^(https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+)(?:[/?#]\S*)?$/.exec(target)?.[1];
 }
 
+/** True when `body` has the `/pr` template's Summary and Merge Danger (with its Door). */
+export function followsPrTemplate(body: string): boolean {
+  return /^##\s+Summary\s*$/m.test(body) && /^##\s+Merge Danger\s*$/m.test(body) && /^\*\*Door:\*\*/m.test(body);
+}
+
 /** Host, owner and name of the repository a pull request URL belongs to. */
 export function repositoryOf(url: string): { host: string; owner: string; name: string } {
   const match = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/\d+$/.exec(url);
