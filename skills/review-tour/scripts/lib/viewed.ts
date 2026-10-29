@@ -7,6 +7,7 @@ import { graphql } from './gh.ts';
 import { mechanicalBatch } from './mechanical-batch.ts';
 import { cutPatch } from './patch.ts';
 import { validatePlan, type TourPlan } from './plan.ts';
+import { printablePath } from './printable.ts';
 import { readPlan } from './render.ts';
 import { freshPullRequest } from './stale-tour.ts';
 import { readCapture, type Change } from './work-folder.ts';
@@ -61,7 +62,7 @@ function readViewedStates(change: Change) {
 }
 
 const count = (files: string[]) => (files.length === 1 ? '1 file' : `${files.length} files`);
-const listed = (files: string[]) => files.map((file) => `  ${file}`);
+const listed = (files: string[]) => files.map((file) => `  ${printablePath(file)}`);
 
 /** Ticks the chosen files as Viewed on the pull request and prints what it ticked. */
 export function viewed(args: string[]): void {

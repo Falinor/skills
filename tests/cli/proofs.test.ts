@@ -256,6 +256,24 @@ test('names the proven and declared generated files when it finishes', () => {
   assert.match(result.stdout, /to-read\.patch/);
 });
 
+test('quotes a file name that would otherwise forge a proof line', () => {
+  const forged = 'new.ts\n  whitespace only  auth.ts';
+  const { repo } = prepareChange(
+    sandbox,
+    {
+      trunk: { 'old.ts': body('kept'), 'auth.ts': 'export const allowed = (user) => check(user);\n' },
+      feature: { 'auth.ts': 'export const allowed = (user) => true;\n' },
+    },
+    { 'old.ts': forged },
+  );
+
+  const result = sandbox.run(['prepare', 'feature', '--base', 'trunk'], { cwd: repo.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /^\s*whitespace only\s+auth\.ts$/m);
+  assert.ok(result.stdout.includes(`pure rename  ${JSON.stringify(forged)}\n`), result.stdout);
+});
+
 test('a follow-up tour proves its narrowed range and trusts only the merge base to declare generated files', () => {
   const repo = sandbox.repo();
   repo.write({ 'a.txt': 'one\n' });

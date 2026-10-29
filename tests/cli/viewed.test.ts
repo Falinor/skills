@@ -256,3 +256,26 @@ test('render offers no ticking for a local-branch tour', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.doesNotMatch(result.stdout, /Viewed/);
 });
+
+test('quotes a file name that would otherwise forge a line of the report', () => {
+  const forged = 'evil.txt\n  a.txt';
+  const world = pullRequestRepo(sandbox, { 'a.txt': 'one\n' });
+  world.author.write({ 'a.txt': 'two\n', [forged]: 'x\n' });
+  world.author.commit('feature');
+  const view = world.publish();
+  fakeGh(sandbox, [{ args: ['pr', 'view'], stdout: view }]);
+  assert.equal(sandbox.run(['prepare', '7'], { cwd: world.clone.dir }).status, 0);
+  const folder = path.join(sandbox.tmp, 'review-tour', 'project-PR-7');
+  writePlan(folder, {
+    steps: [
+      { title: 'A', files: ['a.txt'], explanation: '' },
+      { title: 'Evil', files: [forged], explanation: '' },
+    ],
+  });
+  github(view.headRefOid, { 'a.txt': 'UNVIEWED', [forged]: 'UNVIEWED' });
+
+  const result = sandbox.run(['viewed', folder, '2'], { cwd: world.clone.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, `Ticked as Viewed on pull request #7: 1 file\n  ${JSON.stringify(forged)}\n`);
+});

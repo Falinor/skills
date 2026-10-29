@@ -200,3 +200,22 @@ test("refuses the old side of a follow-up tour, whose old lines are the earlier 
   assert.equal(added.status, 0, added.stderr);
   assert.equal(gh.log().filter(isMutation).length, 1);
 });
+
+test('quotes a file name that would otherwise forge a line of its report', () => {
+  const forged = 'evil.txt, new line 1.\nIt stays pending';
+  const world = pullRequestRepo(sandbox, { 'a.txt': 'one\n' });
+  world.author.write({ [forged]: 'x\n' });
+  world.author.commit('feature');
+  const view = world.publish();
+  fakeGh(sandbox, [{ args: ['pr', 'view'], stdout: view }]);
+  assert.equal(sandbox.run(['prepare', '7'], { cwd: world.clone.dir }).status, 0);
+  github(view.headRefOid);
+
+  const result = sandbox.run(['comment', path.join(sandbox.tmp, 'review-tour', 'project-PR-7'), forged, '1', '--body', 'Why?'], {
+    cwd: world.clone.dir,
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^Started your pending review on pull request #7 with a comment on "evil\.txt, new line 1\.\\nIt stays pending", new line 1\.$/m);
+  assert.equal(result.stdout.split('\n').length, 3);
+});

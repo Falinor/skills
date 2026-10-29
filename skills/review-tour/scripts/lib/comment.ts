@@ -7,6 +7,7 @@ import { UserError } from './errors.ts';
 import { graphql } from './gh.ts';
 import { cutPatch } from './patch.ts';
 import { misplacedAnchor } from './plan.ts';
+import { printablePath } from './printable.ts';
 import { freshPullRequest } from './stale-tour.ts';
 import { readCapture } from './work-folder.ts';
 
@@ -42,7 +43,7 @@ function requestedComment(args: string[]) {
     );
   }
   const diff = cutPatch(patch, change.files).get(file);
-  if (!diff) throw new UserError(`${file} is not among the change's files (see change.json), so ${refused}.`);
+  if (!diff) throw new UserError(`${printablePath(file)} is not among the change's files (see change.json), so ${refused}.`);
   const anchor = { file, line: Number(line), side } as const;
   // GitHub takes line comments only on lines its diff shows.
   const misplaced = misplacedAnchor(anchor, diff);
@@ -86,11 +87,12 @@ export function comment(args: string[]): void {
   }
 
   const number = change.pullRequest?.number;
+  const where = `${printablePath(file)}, ${side} line ${line}`;
   console.log(
     [
       pending
-        ? `Added a comment on ${file}, ${side} line ${line}, to your pending review on pull request #${number}.`
-        : `Started your pending review on pull request #${number} with a comment on ${file}, ${side} line ${line}.`,
+        ? `Added a comment on ${where}, to your pending review on pull request #${number}.`
+        : `Started your pending review on pull request #${number} with a comment on ${where}.`,
       `It stays pending: only you can see it until you submit the review yourself on GitHub.`,
     ].join('\n'),
   );
