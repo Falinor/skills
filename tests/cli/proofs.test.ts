@@ -3,20 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
-import { prepareChange } from '../support/tour.ts';
+import { filesOf, prepareChange, workFolder } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
   sandbox = makeSandbox();
 });
 afterEach(() => sandbox.cleanup());
-
-type File = { path: string; proofs?: string[]; generated?: string };
-
-function filesOf(folder: string): Map<string, File> {
-  const change = JSON.parse(fs.readFileSync(path.join(folder, 'change.json'), 'utf8'));
-  return new Map(change.files.map((file: File) => [file.path, file]));
-}
 
 const body = (name: string) =>
   `export function ${name}(value: number): number {\n  const scaled = value * 3;\n  return scaled - 1;\n}\n`;
@@ -293,7 +286,7 @@ test('a follow-up tour proves its narrowed range and trusts only the merge base 
   const result = sandbox.run(['prepare', 'feature', '--base', 'trunk', '--since', earlier], { cwd: repo.dir });
 
   assert.equal(result.status, 0, result.stderr);
-  const files = filesOf(path.join(sandbox.tmp, 'review-tour', `project-feature-since-${earlier}`));
+  const files = filesOf(workFolder(sandbox, `feature-since-${earlier}`));
   assert.deepEqual(files.get('renamed.ts')?.proofs, ['pure-rename']);
   assert.equal(files.get('gen/client.js')?.generated, 'change');
   assert.equal(files.get('schema.ts')?.generated, 'change');

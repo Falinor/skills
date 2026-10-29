@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
+import { workFolder } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
@@ -10,8 +11,8 @@ beforeEach(() => {
 });
 afterEach(() => sandbox.cleanup());
 
-function readChange(workFolder: string) {
-  return JSON.parse(fs.readFileSync(path.join(workFolder, 'change.json'), 'utf8'));
+function readChange(folder: string) {
+  return JSON.parse(fs.readFileSync(path.join(folder, 'change.json'), 'utf8'));
 }
 
 test('captures a branch against the given base into a work folder outside the checkout', () => {
@@ -28,9 +29,9 @@ test('captures a branch against the given base into a work folder outside the ch
   const result = sandbox.run(['prepare', 'feat/login', '--base', 'trunk'], { cwd: repo.dir });
 
   assert.equal(result.status, 0, result.stderr);
-  const workFolder = path.join(sandbox.tmp, 'review-tour', 'project-feat-login');
-  assert.ok(result.stdout.includes(workFolder), result.stdout);
-  const change = readChange(workFolder);
+  const folder = workFolder(sandbox, 'feat-login');
+  assert.ok(result.stdout.includes(folder), result.stdout);
+  const change = readChange(folder);
   assert.equal(change.target, 'feat/login');
   assert.equal(change.base, 'trunk');
   assert.equal(change.head, head);
@@ -38,7 +39,7 @@ test('captures a branch against the given base into a work folder outside the ch
     { path: 'a.txt', status: 'M', additions: 1, deletions: 0 },
     { path: 'b.txt', status: 'A', additions: 1, deletions: 0 },
   ]);
-  const patch = fs.readFileSync(path.join(workFolder, 'change.patch'), 'utf8');
+  const patch = fs.readFileSync(path.join(folder, 'change.patch'), 'utf8');
   assert.match(patch, /^\+two$/m);
   assert.doesNotMatch(patch, /only on trunk/);
 });
@@ -62,7 +63,7 @@ test("defaults the base to the remote's default branch, never to main", () => {
   const result = sandbox.run(['prepare', 'feature'], { cwd: clone.dir });
 
   assert.equal(result.status, 0, result.stderr);
-  const change = readChange(path.join(sandbox.tmp, 'review-tour', 'project-feature'));
+  const change = readChange(workFolder(sandbox, 'feature'));
   assert.equal(change.base, 'origin/trunk');
   assert.deepEqual(
     change.files.map((file: { path: string }) => file.path),
@@ -77,7 +78,7 @@ test("asks the remote for its default branch when origin/HEAD is unset", () => {
   const result = sandbox.run(['prepare', 'feature'], { cwd: clone.dir });
 
   assert.equal(result.status, 0, result.stderr);
-  const change = readChange(path.join(sandbox.tmp, 'review-tour', 'project-feature'));
+  const change = readChange(workFolder(sandbox, 'feature'));
   assert.equal(change.base, 'origin/trunk');
   assert.equal(change.files.length, 2);
 });

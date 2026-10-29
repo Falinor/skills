@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeGh, pullRequestRepo } from '../support/github.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
-import { writePlan } from '../support/tour.ts';
+import { workFolder, writePlan } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
@@ -12,8 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => sandbox.cleanup());
 
-const folderOf = (target: string, since: string) =>
-  path.join(sandbox.tmp, 'review-tour', `project-${target}-since-${since}`);
+const folderOf = (target: string, since: string) => workFolder(sandbox, `${target}-since-${since}`);
 
 function readCapture(folder: string) {
   return {
@@ -82,7 +81,7 @@ test('since <sha> limits a pull request tour to the commits after that head', ()
   assert.equal(change.head, view.headRefOid);
   assert.deepEqual(paths(change), ['g.txt']);
   // The earlier tour stays as it was.
-  assert.deepEqual(paths(readCapture(path.join(sandbox.tmp, 'review-tour', 'project-PR-7')).change), ['f.txt']);
+  assert.deepEqual(paths(readCapture(workFolder(sandbox, 'PR-7')).change), ['f.txt']);
 });
 
 test('covers the full change and says why when the earlier head was rewritten by a force-push', () => {

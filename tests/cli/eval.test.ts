@@ -8,6 +8,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeDifft } from '../support/difftastic.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
+import { filesOf, workFolder } from '../support/tour.ts';
 
 const evals = path.join(import.meta.dirname, '../../evals/review-tour');
 
@@ -17,8 +18,6 @@ beforeEach(() => {
 });
 afterEach(() => sandbox.cleanup());
 
-type File = { path: string; proofs?: string[]; generated?: string };
-
 /** Builds the fixture into the sandbox and captures it with `prepare`, as the agent would. */
 function prepareFixture(): { repo: string; folder: string } {
   const repo = path.join(sandbox.root, 'shop');
@@ -26,12 +25,7 @@ function prepareFixture(): { repo: string; folder: string } {
   assert.equal(built.status, 0, built.stderr);
   const prepared = sandbox.run(['prepare', 'feature', '--base', 'trunk'], { cwd: repo });
   assert.equal(prepared.status, 0, prepared.stderr);
-  return { repo, folder: path.join(sandbox.tmp, 'review-tour', 'shop-feature') };
-}
-
-function filesOf(folder: string): Map<string, File> {
-  const change = JSON.parse(fs.readFileSync(path.join(folder, 'change.json'), 'utf8'));
-  return new Map(change.files.map((file: File) => [file.path, file]));
+  return { repo, folder: workFolder(sandbox, 'feature', 'shop') };
 }
 
 test('the fixture holds a cross-file move, a rename, a reformat, a generated file, wiring and a hidden behaviour change', () => {
@@ -228,7 +222,7 @@ test('the grader fails a run whose final plan no longer renders, and one where p
   writePlan(folder, { ...soundPlan, intent: undefined });
 
   const edited = grade(folder);
-  const unprepared = grade(path.join(sandbox.tmp, 'review-tour', 'shop-elsewhere'));
+  const unprepared = grade(workFolder(sandbox, 'elsewhere', 'shop'));
 
   assert.equal(edited.status, 1);
   assert.match(
