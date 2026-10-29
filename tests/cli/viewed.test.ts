@@ -198,7 +198,7 @@ test('refuses a local-branch tour without calling GitHub', () => {
 test("reads every page of the pull request's files before ticking", () => {
   const tour = pullRequestTour();
   const gh = fakeGh(sandbox, [
-    { args: ['api', 'graphql'], includes: '"page-2"', stdout: filesPage(tour.head, { 'b.txt': 'UNVIEWED', 'c.txt': 'VIEWED' }) },
+    { args: ['api', 'graphql'], includes: 'after=page-2', stdout: filesPage(tour.head, { 'b.txt': 'UNVIEWED', 'c.txt': 'VIEWED' }) },
     { args: ['api', 'graphql'], includes: 'markFileAsViewed', stdout: { data: {} } },
     { args: ['api', 'graphql'], includes: 'viewerViewedState', stdout: filesPage(tour.head, { 'a.txt': 'UNVIEWED' }, 'page-2') },
   ]);

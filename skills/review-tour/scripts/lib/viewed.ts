@@ -7,7 +7,7 @@ import { graphql } from './gh.ts';
 import { mechanicalBatch } from './mechanical-batch.ts';
 import type { TourPlan } from './plan.ts';
 import { printablePath } from './printable.ts';
-import { freshPullRequest } from './stale-tour.ts';
+import { freshPullRequest, type FreshPullRequest } from './stale-tour.ts';
 import { readTour } from './tour.ts';
 import type { Change } from './work-folder.ts';
 
@@ -47,12 +47,10 @@ function readViewedStates(change: Change) {
   const states = new Map<string, ChangedFileState['viewerViewedState']>();
   let cursor: string | null = null;
   for (;;) {
-    const after: string = cursor === null ? '' : `, after: ${JSON.stringify(cursor)}`;
-    const page = freshPullRequest<FilesPage>(
-      change,
-      'nothing was ticked',
-      `files(first: 100${after}) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }`,
-    );
+    const page: FreshPullRequest & FilesPage = freshPullRequest<FilesPage>(change, 'nothing was ticked', {
+      fields: 'files(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }',
+      variables: { after: { type: 'String', value: cursor } },
+    });
     for (const node of page.files.nodes) states.set(node.path, node.viewerViewedState);
     const { hasNextPage, endCursor } = page.files.pageInfo;
     if (!hasNextPage || endCursor === null) return { host: page.host, id: page.id, states };

@@ -54,11 +54,9 @@ function requestedComment(args: string[]) {
 export function comment(args: string[]): void {
   const { change, file, line, side, body } = requestedComment(args);
 
-  const pullRequest = freshPullRequest<PendingReviews>(
-    change,
-    refused,
-    'reviews(states: [PENDING], first: 100) { nodes { id viewerDidAuthor } }',
-  );
+  const pullRequest = freshPullRequest<PendingReviews>(change, refused, {
+    fields: 'reviews(states: [PENDING], first: 100) { nodes { id viewerDidAuthor } }',
+  });
   // Pending reviews are visible only to their author; GitHub allows one per reviewer.
   const pending = pullRequest.reviews.nodes.find((review) => review.viewerDidAuthor);
   const thread = { path: file, line, side: side === 'old' ? 'LEFT' : 'RIGHT', body };

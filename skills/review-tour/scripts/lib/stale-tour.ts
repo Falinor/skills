@@ -16,16 +16,19 @@ export type FreshPullRequest = {
   headRefOid: string;
 };
 
+/** PullRequest fields to read beside its id and head, with the GraphQL variables they use; a null value leaves one unset. */
+export type Selection = { fields: string; variables?: Record<string, { type: string; value: string | number | null }> };
+
 /**
- * Reads the tour's pull request from GitHub, with the PullRequest fields in
- * `select` beside its id and head. Refuses a local-branch tour, which has no
+ * Reads the tour's pull request from GitHub, with the fields `selection`
+ * names beside its id and head. Refuses a local-branch tour, which has no
  * pull request, and a stale tour. `consequence` ends both refusals, such as
  * "nothing was ticked".
  */
 export function freshPullRequest<T extends object = object>(
   change: Change,
   consequence: string,
-  select = '',
+  { fields, variables = {} }: Selection = { fields: '' },
 ): FreshPullRequest & T {
   const pullRequest = change.pullRequest;
   if (!pullRequest) {
@@ -33,12 +36,14 @@ export function freshPullRequest<T extends object = object>(
   }
   requireTools(['gh']);
   const { host, owner, name } = repositoryOf(pullRequest.url);
+  const declarations = Object.entries(variables).map(([variable, { type }]) => `, $${variable}: ${type}`).join('');
+  const values = Object.entries(variables).flatMap(([variable, { value }]) => (value === null ? [] : [[variable, value] as const]));
   const data = graphql<{ repository: { pullRequest: Omit<FreshPullRequest, 'host'> & T } }>(
     host,
-    `query($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) { pullRequest(number: $number) { id headRefOid ${select} } }
+    `query($owner: String!, $name: String!, $number: Int!${declarations}) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { id headRefOid ${fields} } }
 }`,
-    { owner, name, number: pullRequest.number },
+    { owner, name, number: pullRequest.number, ...Object.fromEntries(values) },
   );
   const live = data.repository.pullRequest;
   if (live.headRefOid !== change.head) {
