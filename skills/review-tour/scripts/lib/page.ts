@@ -4,8 +4,8 @@
 import { describeFollowUp } from './follow-up.ts';
 import { inlineMarkdown, markdown } from './markdown.ts';
 import type { FileDiff, Hunk } from './patch.ts';
-import type { Callout, Intent, Step, TourPlan, Trace } from './plan.ts';
-import type { Change } from './work-folder.ts';
+import { tierLabels, tiers, type Callout, type Intent, type Step, type TourPlan, type Trace } from './plan.ts';
+import { proofLabels, type Change, type ChangedFile } from './work-folder.ts';
 
 export function escape(text: string): string {
   return text
@@ -39,6 +39,11 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .trace table { border-collapse: collapse; }
 .trace th, .trace td { border: 1px solid #ccc; padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
 .trace .diverges { background: #fff8c5; }
+.flag { font: 600 0.8rem system-ui, sans-serif; background: #fff3cd; color: #664d03; border-radius: 0.25rem; padding: 0 0.4rem; }
+.mechanical { border-collapse: collapse; margin: 0.5rem 0 1rem; }
+.mechanical caption { text-align: left; font-weight: 600; }
+.mechanical th, .mechanical td { border-bottom: 1px solid #ddd; padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; }
+.mechanical .count { text-align: right; }
 `;
 
 export const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
@@ -80,16 +85,45 @@ function renderHunk(hunk: Hunk, callouts: Callout[]): string {
   return `<tbody><tr class="hunk-header"><td colspan="3">${escape(hunk.header)}</td></tr>${rows.join('')}</tbody>`;
 }
 
-function renderFile({ file, hunks, binary }: FileDiff, callouts: Callout[]): string {
-  const name = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+const nameOf = (file: ChangedFile) => (file.oldPath ? `${file.oldPath} → ${file.path}` : file.path);
+
+function renderFile({ file, hunks, binary }: FileDiff, callouts: Callout[], unprovenMechanical: boolean): string {
+  const name = nameOf(file);
+  const flag = unprovenMechanical ? ' <span class="flag">Unproven mechanical</span>' : '';
   const stats = file.additions === null ? 'binary' : `+${file.additions} −${file.deletions}`;
   const body = binary
     ? '<p class="note">Binary file, not shown.</p>'
     : hunks.length > 0
       ? `<table class="diff">${hunks.map((hunk) => renderHunk(hunk, callouts)).join('')}</table>`
       : '<p class="note">No content change.</p>';
-  return `<article class="file"><h3 class="file-path"><code>${escape(name)}</code> <span class="stats">${stats}</span></h3>${body}</article>`;
+  return `<article class="file"><h4 class="file-path"><code>${escape(name)}</code>${flag} <span class="stats">${stats}</span></h4>${body}</article>`;
 }
+
+function mechanicalTable(files: ChangedFile[], caption: string, proofOf: (file: ChangedFile) => string): string {
+  if (files.length === 0) return '';
+  const rows = files.map(
+    (file) =>
+      `<tr><td><code>${escape(nameOf(file))}</code></td>` +
+      `<td class="count">${file.additions ?? 'binary'}</td><td class="count">${file.deletions ?? 'binary'}</td>` +
+      `<td>${escape(proofOf(file))}</td></tr>`,
+  );
+  return (
+    `<table class="mechanical"><caption>${caption}</caption>` +
+    '<thead><tr><th scope="col">File</th><th scope="col">Added</th><th scope="col">Removed</th><th scope="col">Proof</th></tr></thead>' +
+    `<tbody>${rows.join('')}</tbody></table>`
+  );
+}
+
+/** Mechanical files as tables, never diffs: proven files first, then declared generated ones apart. */
+function renderMechanical(files: ChangedFile[]): string {
+  const proven = files.filter((file) => file.proofs);
+  const declared = files.filter((file) => !file.proofs);
+  return (
+    mechanicalTable(proven, 'Proven', (file) => file.proofs?.map((proof) => proofLabels[proof]).join(', ') ?? '') +
+    mechanicalTable(declared, 'Declared generated', () => 'declared, not proven')
+  );
+}
+
 
 /** The old and new runs side by side, row by row, each row marked = or ≠. */
 function renderTrace(trace: Trace): string {
@@ -102,7 +136,7 @@ function renderTrace(trace: Trace): string {
     );
   });
   return (
-    `<div class="trace"><h3>Old versus new</h3><p>Input: ${inlineMarkdown(trace.input)}</p>` +
+    `<div class="trace"><h4>Old versus new</h4><p>Input: ${inlineMarkdown(trace.input)}</p>` +
     `<table><thead><tr><td></td><th scope="col">Old</th><th scope="col">New</th></tr></thead>` +
     `<tbody>${rows.join('')}</tbody></table></div>`
   );
@@ -113,34 +147,49 @@ function renderAids(step: Step): string {
   const questions = step.questions ?? [];
   const parts: string[] = [];
   if (step.pseudocode !== undefined) {
-    parts.push(`<div class="pseudocode"><h3>Pseudocode</h3><pre><code>${escape(step.pseudocode)}</code></pre></div>`);
+    parts.push(`<div class="pseudocode"><h4>Pseudocode</h4><pre><code>${escape(step.pseudocode)}</code></pre></div>`);
   }
   if (step.trace !== undefined) parts.push(renderTrace(step.trace));
   if (questions.length > 0) {
     const items = questions.map((question) => `<li>${inlineMarkdown(question)}</li>`).join('');
-    parts.push(`<div class="questions"><h3>Reviewer questions</h3><ul>${items}</ul></div>`);
+    parts.push(`<div class="questions"><h4>Reviewer questions</h4><ul>${items}</ul></div>`);
   }
   return parts.join('');
 }
 
+function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>): string {
+  const id = `step-${index + 1}`;
+  const body =
+    step.tier === 'mechanical'
+      ? renderMechanical(step.files.map((file) => (diffs.get(file) as FileDiff).file))
+      : step.files
+          .map((file) =>
+            renderFile(
+              diffs.get(file) as FileDiff,
+              (step.callouts ?? []).filter((callout) => callout.file === file),
+              step.unprovenMechanical?.includes(file) ?? false,
+            ),
+          )
+          .join('');
+  return (
+    `<section class="step" id="${id}" aria-labelledby="${id}-title">` +
+    `<h3 id="${id}-title"><a href="#${id}">Step ${index + 1}</a> · ${escape(step.title)}</h3>` +
+    `<div class="explanation">${markdown(step.explanation)}</div>` +
+    renderAids(step) +
+    body +
+    `</section>`
+  );
+}
+
 export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, FileDiff>): string {
-  const steps = plan.steps.map((step, index) => {
-    const id = `step-${index + 1}`;
-    return (
-      `<section class="step" id="${id}" aria-labelledby="${id}-title">` +
-      `<h2 id="${id}-title"><a href="#${id}">Step ${index + 1}</a> · ${escape(step.title)}</h2>` +
-      `<div class="explanation">${markdown(step.explanation)}</div>` +
-      renderAids(step) +
-      step.files
-        .map((file) =>
-          renderFile(
-            diffs.get(file) as FileDiff,
-            (step.callouts ?? []).filter((callout) => callout.file === file),
-          ),
-        )
-        .join('') +
-      `</section>`
-    );
+  // Validation keeps steps in tier order, so grouping keeps their numbers ascending.
+  const steps = tiers.flatMap((tier) => {
+    const inTier = plan.steps.flatMap((step, index) => (step.tier === tier ? [renderStep(step, index, diffs)] : []));
+    if (inTier.length === 0) return [];
+    return [
+      `<section class="tier" id="tier-${tier}" aria-labelledby="tier-${tier}-title">` +
+        `<h2 id="tier-${tier}-title">${tierLabels[tier]}</h2>${inTier.join('\n')}</section>`,
+    ];
   });
   return `<!doctype html>
 <html lang="en">

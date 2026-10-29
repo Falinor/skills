@@ -31,7 +31,8 @@ test.afterAll(() => sandbox.cleanup());
 test('the page loads with every step', async ({ page }) => {
   await page.goto(pageUrl);
 
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Intent', 'Step 1 · First', 'Step 2 · Second']);
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Intent', 'Core logic']);
+  await expect(page.getByRole('heading', { level: 3 })).toHaveText(['Step 1 · First', 'Step 2 · Second']);
 });
 
 test('#step-N lands on its step', async ({ page }) => {
