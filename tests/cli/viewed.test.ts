@@ -185,3 +185,18 @@ test('refuses a local-branch tour without calling GitHub', () => {
   assert.match(result.stderr, /local branch feature, which has no pull request on GitHub, so nothing was ticked/);
   assert.deepEqual(gh.log(), []);
 });
+
+test("reads every page of the pull request's files before ticking", () => {
+  const tour = pullRequestTour();
+  const gh = fakeGh(sandbox, [
+    { args: ['api', 'graphql'], includes: '"page-2"', stdout: filesPage(tour.head, { 'b.txt': 'UNVIEWED', 'c.txt': 'VIEWED' }) },
+    { args: ['api', 'graphql'], includes: 'markFileAsViewed', stdout: { data: {} } },
+    { args: ['api', 'graphql'], includes: 'viewerViewedState', stdout: filesPage(tour.head, { 'a.txt': 'UNVIEWED' }, 'page-2') },
+  ]);
+
+  const result = sandbox.run(['viewed', tour.folder, '1-3'], { cwd: tour.clone.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(ticked(gh.log()), ['a.txt', 'b.txt']);
+  assert.match(result.stdout, /^Already viewed, left as they were: 1 file\n {2}c\.txt$/m);
+});

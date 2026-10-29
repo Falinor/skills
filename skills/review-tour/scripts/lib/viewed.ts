@@ -8,7 +8,7 @@ import { cutPatch } from './patch.ts';
 import { validatePlan, type TourPlan } from './plan.ts';
 import { readPlan } from './render.ts';
 import { freshPullRequest } from './stale-tour.ts';
-import { readCapture } from './work-folder.ts';
+import { readCapture, type Change } from './work-folder.ts';
 
 const usage = 'usage: review-tour viewed <work-folder> <steps>\n  steps: a step number (3), a range (1-4), a list (1,3,5) or both (1-4,7)';
 
@@ -37,6 +37,24 @@ function chosenFiles(plan: TourPlan, selection: string): string[] {
   return chosenSteps(plan, selection).flatMap((step) => plan.steps[step - 1].files);
 }
 
+/** Every file of the pull request with its viewed state, page by page, each page passing the stale-tour gate. */
+function readViewedStates(change: Change) {
+  const states = new Map<string, ChangedFileState['viewerViewedState']>();
+  let cursor: string | null = null;
+  for (;;) {
+    const after: string = cursor === null ? '' : `, after: ${JSON.stringify(cursor)}`;
+    const page = freshPullRequest<FilesPage>(
+      change,
+      'nothing was ticked',
+      `files(first: 100${after}) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }`,
+    );
+    for (const node of page.files.nodes) states.set(node.path, node.viewerViewedState);
+    const { hasNextPage, endCursor } = page.files.pageInfo;
+    if (!hasNextPage || endCursor === null) return { host: page.host, id: page.id, states };
+    cursor = endCursor;
+  }
+}
+
 const count = (files: string[]) => (files.length === 1 ? '1 file' : `${files.length} files`);
 const listed = (files: string[]) => files.map((file) => `  ${file}`);
 
@@ -48,12 +66,7 @@ export function viewed(args: string[]): void {
   const plan = validatePlan(readPlan(folder), change, cutPatch(patch, change.files));
   const files = chosenFiles(plan, positionals[1]);
 
-  const page = freshPullRequest<FilesPage>(
-    change,
-    'nothing was ticked',
-    'files(first: 100) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }',
-  );
-  const states = new Map(page.files.nodes.map((node) => [node.path, node.viewerViewedState]));
+  const { host, id, states } = readViewedStates(change);
   // DISMISSED means new changes since the reviewer last viewed the file: tick it again.
   const toTick = files.filter((file) => states.has(file) && states.get(file) !== 'VIEWED');
   const alreadyViewed = files.filter((file) => states.get(file) === 'VIEWED');
@@ -63,8 +76,8 @@ export function viewed(args: string[]): void {
     const marks = toTick
       .map((_, index) => `p${index}: markFileAsViewed(input: { pullRequestId: $pr, path: $p${index} }) { clientMutationId }`)
       .join('\n  ');
-    graphql(page.host, `mutation($pr: ID!${declarations}) {\n  ${marks}\n}`, {
-      pr: page.id,
+    graphql(host, `mutation($pr: ID!${declarations}) {\n  ${marks}\n}`, {
+      pr: id,
       ...Object.fromEntries(toTick.map((file, index) => [`p${index}`, file])),
     });
   }
