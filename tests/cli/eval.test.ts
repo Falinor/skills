@@ -228,3 +228,91 @@ test('the grader fails a run whose final plan no longer renders, and one where p
   assert.equal(unprepared.status, 1);
   assert.equal(verdict(unprepared.stdout, 'every file'), 'fail  every file appears exactly once: no captured change: prepare never ran');
 });
+
+/**
+ * Puts a fake agent on PATH. Like a real one, it finds the skill where the
+ * harness installed it, runs prepare, writes a tour plan and renders it: the
+ * plan of its Nth call is `plans[N - 1]`.
+ */
+function fakeAgent(name: string, skills: string, plans: object[]) {
+  const plansFile = path.join(sandbox.root, `${name}-plans.json`);
+  fs.writeFileSync(plansFile, JSON.stringify(plans));
+  return sandbox.fake(
+    name,
+    `const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const calls = fs.readFileSync(${JSON.stringify(path.join(sandbox.bin, `${name}.log`))}, 'utf8').trim().split('\\n').length;
+const plan = JSON.parse(fs.readFileSync(${JSON.stringify(plansFile)}, 'utf8'))[calls - 1];
+const cli = path.resolve(${JSON.stringify(skills)}, 'review-tour/scripts/review-tour.mjs');
+const prepared = execFileSync(process.execPath, [cli, 'prepare', 'feature', '--base', 'trunk'], { encoding: 'utf8' });
+const folder = /^Work folder: (.*)$/m.exec(prepared)[1];
+fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(plan));
+execFileSync(process.execPath, [cli, 'render', folder], { stdio: 'inherit' });
+`,
+  );
+}
+
+function runHarness(args: string[], env: NodeJS.ProcessEnv = {}) {
+  return spawnSync('bash', [path.join(evals, 'run.sh'), ...args], {
+    env: { ...sandbox.env, CI: '', ...env },
+    encoding: 'utf8',
+  });
+}
+
+const flaggedPlan = {
+  intent,
+  steps: [{ ...soundPlan.steps[0], callouts: [], unprovenMechanical: ['src/discount.ts'] }, ...soundPlan.steps.slice(1)],
+};
+
+test('the harness runs Claude Code three times on a fresh fixture and prints each result and the pass rate', () => {
+  const claude = fakeAgent('claude', '.claude/skills', [soundPlan, flaggedPlan, soundPlan]);
+
+  const result = runHarness([]);
+
+  assert.equal(result.status, 1, result.stderr);
+  const lines = result.stdout.split('\n');
+  assert.ok(lines.includes('run 1/3: pass'), result.stdout);
+  assert.ok(lines.includes('run 2/3: fail'), result.stdout);
+  assert.ok(
+    lines.includes('  fail  the hidden change sits in core logic: src/discount.ts is flagged unproven mechanical in step 1'),
+    result.stdout,
+  );
+  assert.ok(lines.includes('run 3/3: pass'), result.stdout);
+  assert.ok(lines.includes('pass rate: 2/3 (67%)'), result.stdout);
+  const calls = claude.log();
+  assert.equal(calls.length, 3);
+  for (const args of calls) {
+    assert.equal(args[0], '-p');
+    assert.equal(args[1], '/review-tour feature base trunk');
+  }
+});
+
+test('the harness runs Codex or OpenCode on request, with the skill where they find it', () => {
+  const codex = fakeAgent('codex', '.agents/skills', [soundPlan]);
+  const opencode = fakeAgent('opencode', '.agents/skills', [soundPlan]);
+
+  const byCodex = runHarness(['--agent', 'codex', '--runs', '1']);
+  const byOpenCode = runHarness(['--agent', 'opencode', '--runs', '1']);
+
+  for (const result of [byCodex, byOpenCode]) {
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(result.stdout.split('\n').includes('pass rate: 1/1 (100%)'), result.stdout);
+  }
+  const [codexArgs] = codex.log();
+  assert.equal(codexArgs[0], 'exec');
+  assert.equal(codexArgs.at(-1), '$review-tour feature base trunk');
+  const [openCodeArgs] = opencode.log();
+  assert.equal(openCodeArgs[0], 'run');
+  assert.match(openCodeArgs.at(-1) ?? '', /review-tour skill .*feature base trunk$/);
+});
+
+test('the harness refuses to run in CI, where every run would be a paid model call', () => {
+  const claude = fakeAgent('claude', '.claude/skills', [soundPlan]);
+
+  const result = runHarness([], { CI: 'true' });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /paid model call; the eval never runs in CI/);
+  assert.deepEqual(claude.log(), []);
+});
