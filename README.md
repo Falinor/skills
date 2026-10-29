@@ -39,6 +39,20 @@ npm run test:page   # Playwright on rendered pages
 
 The skill's scripts are TypeScript run directly by Node (type stripping) with built-in modules only; the dev dependencies serve the tests and the type check alone. See `GLOSSARY.md` for the vocabulary and `docs/adr/` for the decisions.
 
+### Agent eval
+
+The tests above check the scripts. The eval measures the agent's part of the job: it runs the whole skill headless on a synthetic repository and grades the tour plan the agent wrote.
+
+```sh
+evals/review-tour/run.sh                    # Claude Code, three runs
+evals/review-tour/run.sh --agent codex      # or --agent opencode
+evals/review-tour/run.sh --runs 5
+```
+
+**Every run is a paid model call.** The eval never runs in CI and refuses to start when `CI` is set. Run it by hand, with the agent's CLI installed and logged in.
+
+Each run builds a fresh repository whose change looks like a tidy-up: a function moved to another file, a rename, a re-indented file, a regenerated file and the exports rewired. One re-indented file also changes behaviour on one line. The harness installs the skill into it, runs `/review-tour feature base trunk` and grades the result: the hidden change sits in core logic (not flagged unproven mechanical), proven files sit in mechanical, every file appears exactly once, and the final plan renders into a page. It prints a result per run and the overall pass rate, and keeps each run's repository and logs in the folder it names last.
+
 ## Credits
 
 `review-tour` was inspired by Trail of Bits' [`review-walkthrough`](https://github.com/trailofbits/skills) and Cursor's `pr-review-canvas`. No code or prose was copied from either; it is written from our own decisions ([ADR 0001](docs/adr/0001-rewrite-from-ideas-under-mit.md)).
