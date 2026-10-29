@@ -21,14 +21,21 @@ const isRegular = (mode: string) => mode === '100644' || mode === '100755';
 const pureRename: Prover = ({ candidates }) =>
   indexesWhere(candidates, ({ entry }) => entry.status === 'R100' && entry.oldMode === entry.newMode);
 
+const extensionOf = (file: string) => path.extname(file).slice(1).toLowerCase();
+
+// Programming languages where a moved definition keeps its meaning, outside
+// top-level statements run for their side effects (a known residual hole).
+// Styles, data, configuration and query files are never proven moved: where a
+// rule or a setting sits changes what it does.
+const codeLanguages = 'c h cc cpp cxx hh hpp hxx cs java kt kts go rs swift dart js mjs cjs jsx ts mts cts tsx'.split(' ');
+const inCodeLanguage = (file: string) => codeLanguages.includes(extensionOf(file));
+
 // Languages where whitespace at the edges of a line, and blank lines, carry
 // no meaning outside multi-line string literals (a known residual hole).
 // Anything else, Python, YAML, Makefiles, Markdown, shell or unknown, is never
 // proven whitespace only.
-const whitespaceFree = new Set(
-  'c h cc cpp cxx hh hpp hxx cs java kt kts go rs swift dart js mjs cjs jsx ts mts cts tsx json jsonc css scss less sql'.split(' '),
-);
-const inWhitespaceFreeLanguage = (file: string) => whitespaceFree.has(path.extname(file).slice(1).toLowerCase());
+const whitespaceFree = new Set([...codeLanguages, ...'json jsonc css scss less sql'.split(' ')]);
+const inWhitespaceFreeLanguage = (file: string) => whitespaceFree.has(extensionOf(file));
 
 /** The lines that remain once whitespace at line edges and blank lines are dropped; inner whitespace is kept. */
 const significantLines = (text: string) =>
@@ -59,17 +66,29 @@ const whitespaceOnly: Prover = ({ root, candidates }) => {
   );
 };
 
-// A moved block must leave one file and land in a different one. A block
-// that also lands in its own file may be a reorder, which changes behaviour,
-// so it proves nothing, even when the same lines also move elsewhere.
+// A moved block must leave one file and land in a different one, once each,
+// between files of a programming language. A block that also lands in its own
+// file may be a reorder, and one that lands twice is a copy: both change
+// behaviour, so they prove nothing.
 const enclose = (lines: string[]) => `\n${lines.join('\n')}\n`;
 
-/** Every changed line moved, each moved block found in another file's opposite runs and in none of its own. */
+/** How many times `block` occurs in `text`, overlaps included. */
+function occurrences(text: string, block: string): number {
+  let count = 0;
+  for (let at = text.indexOf(block); at !== -1; at = text.indexOf(block, at + 1)) count++;
+  return count;
+}
+
+/** Every changed line moved, each moved block removed once and added once, into or out of another code file. */
 const pureMove: Prover = ({ root, from, to, candidates }) => {
   const moves = listMoves(root, from, to);
   const runsOf = moves.map((file) => file.runs.map((run) => ({ sign: run.sign, text: enclose(run.blocks.flat()) })));
-  const landsIn = (index: number, sign: string, block: string) =>
-    runsOf[index].some((run) => run.sign !== sign && run.text.includes(block));
+  const isCode = candidates.map(({ entry }) => [entry.oldPath ?? entry.path, entry.path].every(inCodeLanguage));
+  /** Where `block` occurs among the runs of sign `sign`, one file index per occurrence. */
+  const foundIn = (sign: string, block: string) =>
+    runsOf.flatMap((runs, index) =>
+      runs.flatMap((run) => (run.sign === sign ? Array<number>(occurrences(run.text, block)).fill(index) : [])),
+    );
   const movedOnly = ({ file, entry }: Candidate, { unmoved, runs }: FileMoves) =>
     unmoved === 0 &&
     runs.length > 0 &&
@@ -78,11 +97,15 @@ const pureMove: Prover = ({ root, from, to, candidates }) => {
   return indexesWhere(
     candidates,
     (candidate, index) =>
+      isCode[index] &&
       movedOnly(candidate, moves[index]) &&
       moves[index].runs.every(({ sign, blocks }) =>
         blocks.every((block) => {
           const text = enclose(block);
-          return !landsIn(index, sign, text) && moves.some((_, other) => other !== index && landsIn(other, sign, text));
+          const opposite = foundIn(sign === '+' ? '-' : '+', text);
+          return (
+            foundIn(sign, text).length === 1 && opposite.length === 1 && opposite[0] !== index && isCode[opposite[0]]
+          );
         }),
       ),
   );

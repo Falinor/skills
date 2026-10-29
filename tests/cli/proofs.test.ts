@@ -96,6 +96,41 @@ test('never proves a move that lands with an edit', () => {
   assert.equal(files.get('b.ts')?.proofs, undefined);
 });
 
+test('never proves a block removed once and added to two files', () => {
+  const { folder } = prepareChange(sandbox, {
+    trunk: { 'src/a.ts': body('alpha') + body('beta'), 'src/b.ts': body('gamma'), 'src/c.ts': body('delta') },
+    feature: { 'src/a.ts': body('alpha'), 'src/b.ts': body('gamma') + body('beta'), 'src/c.ts': body('delta') + body('beta') },
+  });
+
+  const files = filesOf(folder);
+  for (const file of ['src/a.ts', 'src/b.ts', 'src/c.ts']) assert.equal(files.get(file)?.proofs, undefined, file);
+  assert.match(fs.readFileSync(path.join(folder, 'to-read.patch'), 'utf8'), /^\+export function beta/m);
+});
+
+test('never proves a move between files of a language that is not code', () => {
+  const rule = '.checkout-button {\n  background-color: rebeccapurple;\n  border-radius: 4px;\n}\n';
+  const setting = 'DATABASE_URL=postgres://production.example.com/shop\n';
+  const { folder } = prepareChange(sandbox, {
+    trunk: {
+      'a.css': `.header { color: black; }\n${rule}`,
+      'b.css': '.footer { color: gray; }\n',
+      '.env.production': `PORT=80\n${setting}`,
+      '.env.development': 'PORT=8080\n',
+    },
+    feature: {
+      'a.css': '.header { color: black; }\n',
+      'b.css': `.footer { color: gray; }\n${rule}`,
+      '.env.production': 'PORT=80\n',
+      '.env.development': `PORT=8080\n${setting}`,
+    },
+  });
+
+  const files = filesOf(folder);
+  for (const file of ['a.css', 'b.css', '.env.production', '.env.development']) {
+    assert.equal(files.get(file)?.proofs, undefined, file);
+  }
+});
+
 const statements = {
   open: 'openTheConnectionToTheDatabase();\n',
   serve: 'serveEveryIncomingRequestUntilStopped();\n',
@@ -119,10 +154,9 @@ test('never proves a reorder hidden by the same lines moving between two other f
     feature: { 'run.ts': close + open + serve, 'from.ts': '', 'to.ts': close },
   });
 
+  // `close` leaves two files and lands in two: no removal pairs with one addition, so nothing is a move.
   const files = filesOf(folder);
-  assert.equal(files.get('run.ts')?.proofs, undefined);
-  assert.deepEqual(files.get('from.ts')?.proofs, ['pure-move']);
-  assert.deepEqual(files.get('to.ts')?.proofs, ['pure-move']);
+  for (const file of ['run.ts', 'from.ts', 'to.ts']) assert.equal(files.get(file)?.proofs, undefined, file);
 });
 
 test('records files the base declares generated', () => {
