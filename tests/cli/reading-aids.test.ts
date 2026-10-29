@@ -174,3 +174,57 @@ test('rejects malformed reading aids, listing every violation at once', () => {
     assert.ok(result.stderr.includes(violation), `missing "${violation}" in:\n${result.stderr}`);
   }
 });
+
+test('renders prose as a Markdown subset: code spans, bold, lists and https links', () => {
+  const { folder, repo } = prepareChange(sandbox, { trunk: {}, feature: { 'a.txt': 'a\n' } });
+  writePlan(folder, {
+    steps: [
+      {
+        title: 'A',
+        files: ['a.txt'],
+        explanation:
+          'Calls `retry()` **twice**:\n- first, per [the docs](https://example.com/a?b=1&c=2)\n- then `**not bold**`\n\n1. one\n2. two',
+        questions: ['Is `x` **safe**?'],
+        callouts: [{ file: 'a.txt', line: 1, side: 'new', tag: 'Subtle', text: 'Uses `y`.' }],
+        trace: { input: '`n = 0`', old: ['**stops**'], new: ['loops'] },
+      },
+    ],
+  });
+
+  const result = render(folder, repo.dir);
+
+  assert.equal(result.status, 0, result.stderr);
+  const html = pageOf(folder);
+  assert.ok(html.includes('<p>Calls <code>retry()</code> <strong>twice</strong>:</p>'), html);
+  assert.match(html, /<ul><li>first, per <a [^>]*href="https:\/\/example\.com\/a\?b=1&amp;c=2"[^>]*>the docs<\/a><\/li>/);
+  assert.ok(html.includes('<li>then <code>**not bold**</code></li></ul>'));
+  assert.ok(html.includes('<ol><li>one</li><li>two</li></ol>'));
+  assert.ok(html.includes('<li>Is <code>x</code> <strong>safe</strong>?</li>'));
+  assert.ok(html.includes('Uses <code>y</code>.'));
+  assert.ok(html.includes('Input: <code>n = 0</code>'));
+  assert.ok(html.includes('<strong>stops</strong>'));
+});
+
+test('keeps raw HTML and non-https links in prose as plain text', () => {
+  const { folder, repo } = prepareChange(sandbox, { trunk: {}, feature: { 'a.txt': 'a\n' } });
+  writePlan(folder, {
+    steps: [
+      {
+        title: 'A',
+        files: ['a.txt'],
+        explanation: 'See <b>this</b>, [that](javascript:alert(1)), [plain](http://example.com) and [data](data:text/html,x).',
+      },
+    ],
+  });
+
+  const result = render(folder, repo.dir);
+
+  assert.equal(result.status, 0, result.stderr);
+  const html = pageOf(folder);
+  assert.ok(
+    html.includes(
+      'See &lt;b&gt;this&lt;/b&gt;, [that](javascript:alert(1)), [plain](http://example.com) and [data](data:text/html,x).',
+    ),
+  );
+  assert.doesNotMatch(html, /href="(?!#step-)/);
+});

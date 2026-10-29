@@ -1,5 +1,7 @@
 // Builds the tour page as one self-contained HTML file. Every piece of text
-// from the tour plan or the patch goes through `escape`.
+// from the tour plan or the patch goes through `escape`, or through the
+// escaping Markdown subset for prose.
+import { inlineMarkdown, markdown } from './markdown.ts';
 import type { FileDiff, Hunk } from './patch.ts';
 import type { Callout, Intent, Step, TourPlan, Trace } from './plan.ts';
 import type { Change } from './work-folder.ts';
@@ -59,7 +61,7 @@ const signs = { add: '+', del: '-', context: ' ', note: '' } as const;
 function renderCallout(callout: Callout): string {
   return (
     `<tr class="callout"><td colspan="3"><span class="tag">${escape(callout.tag)}</span>` +
-    `${escape(callout.text)}</td></tr>`
+    `${inlineMarkdown(callout.text)}</td></tr>`
   );
 }
 
@@ -95,11 +97,11 @@ function renderTrace(trace: Trace): string {
     const [mark, label] = before === after ? ['=', 'same'] : ['≠', 'diverges'];
     return (
       `<tr class="${label}"><th scope="row" title="${label}">${mark}</th>` +
-      `<td>${escape(before)}</td><td>${escape(after)}</td></tr>`
+      `<td>${inlineMarkdown(before)}</td><td>${inlineMarkdown(after)}</td></tr>`
     );
   });
   return (
-    `<div class="trace"><h3>Old versus new</h3><p>Input: ${escape(trace.input)}</p>` +
+    `<div class="trace"><h3>Old versus new</h3><p>Input: ${inlineMarkdown(trace.input)}</p>` +
     `<table><thead><tr><td></td><th scope="col">Old</th><th scope="col">New</th></tr></thead>` +
     `<tbody>${rows.join('')}</tbody></table></div>`
   );
@@ -114,7 +116,7 @@ function renderAids(step: Step): string {
   }
   if (step.trace !== undefined) parts.push(renderTrace(step.trace));
   if (questions.length > 0) {
-    const items = questions.map((question) => `<li>${escape(question)}</li>`).join('');
+    const items = questions.map((question) => `<li>${inlineMarkdown(question)}</li>`).join('');
     parts.push(`<div class="questions"><h3>Reviewer questions</h3><ul>${items}</ul></div>`);
   }
   return parts.join('');
@@ -126,7 +128,7 @@ export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, Fi
     return (
       `<section class="step" id="${id}" aria-labelledby="${id}-title">` +
       `<h2 id="${id}-title"><a href="#${id}">Step ${index + 1}</a> · ${escape(step.title)}</h2>` +
-      `<div class="explanation">${escape(step.explanation)}</div>` +
+      `<div class="explanation">${markdown(step.explanation)}</div>` +
       renderAids(step) +
       step.files
         .map((file) =>
