@@ -1,0 +1,5 @@
+interface:
+  display_name: "Review Tour"
+  short_description: "Guided human tour of a change"
+policy:
+  allow_implicit_invocation: false
