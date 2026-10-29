@@ -241,8 +241,8 @@ test('the grader fails a run whose final plan no longer renders, and one where p
 
 /**
  * Puts a fake agent on PATH. Like a real one, it finds the skill where the
- * harness installed it, runs prepare, writes a tour plan and renders it: the
- * plan of its Nth call is `plans[N - 1]`.
+ * harness installed it, runs prepare, writes a tour plan and renders it with
+ * `--open`, as SKILL.md says: the plan of its Nth call is `plans[N - 1]`.
  */
 function fakeAgent(name: string, skills: string, plans: object[]) {
   const plansFile = path.join(sandbox.root, `${name}-plans.json`);
@@ -258,7 +258,7 @@ const cli = path.resolve(${JSON.stringify(skills)}, 'review-tour/scripts/review-
 const prepared = execFileSync(process.execPath, [cli, 'prepare', 'feature', '--base', 'trunk'], { encoding: 'utf8' });
 const folder = /^Work folder: (.*)$/m.exec(prepared)[1];
 fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(plan));
-execFileSync(process.execPath, [cli, 'render', folder], { stdio: 'inherit' });
+execFileSync(process.execPath, [cli, 'render', folder, '--open'], { stdio: 'inherit' });
 `,
   );
 }
@@ -315,6 +315,16 @@ test('the harness runs Codex or OpenCode on request, with the skill where they f
   const [openCodeArgs] = opencode.log();
   assert.equal(openCodeArgs[0], 'run');
   assert.match(openCodeArgs.at(-1) ?? '', /review-tour skill .*feature base trunk$/);
+});
+
+test('the harness keeps every run from opening a browser tab', () => {
+  fakeAgent('claude', '.claude/skills', [soundPlan, soundPlan]);
+  const openers = [sandbox.fake('open'), sandbox.fake('xdg-open')];
+
+  const result = runHarness(['--runs', '2']);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(openers.flatMap((opener) => opener.log()), []);
 });
 
 test('the harness refuses to run in CI, where every run would be a paid model call', () => {

@@ -125,3 +125,15 @@ test('opens the page with the platform opener when asked', () => {
     [[path.join(folder, 'tour.html')]],
   );
 });
+
+test('never opens the page when REVIEW_TOUR_NO_OPEN is set, as in eval runs', () => {
+  const { folder, repo } = prepareChange(sandbox, { trunk: {}, feature: { 'a.txt': 'a\n' } });
+  writePlan(folder, { steps: [{ title: 'A', tier: 'core-logic', files: ['a.txt'], explanation: '' }] });
+  const openers = [sandbox.fake('open'), sandbox.fake('xdg-open')];
+
+  const result = sandbox.run(['render', folder, '--open'], { cwd: repo.dir, env: { REVIEW_TOUR_NO_OPEN: '1' } });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(openers.flatMap((opener) => opener.log()), []);
+  assert.match(result.stdout, /^Page: /m);
+});

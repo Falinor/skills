@@ -76,7 +76,8 @@ for run in $(seq 1 "$runs"); do
   printf '/%s/\n' "${skills_dir%%/*}" >>"$repo/.git/info/exclude"
 
   status=0
-  (cd "$repo" && TMPDIR="$tmp" run_agent "$tmp") </dev/null >"$dir/agent.log" 2>&1 || status=$?
+  # REVIEW_TOUR_NO_OPEN keeps `render --open` from opening a browser tab per run.
+  (cd "$repo" && TMPDIR="$tmp" REVIEW_TOUR_NO_OPEN=1 run_agent "$tmp") </dev/null >"$dir/agent.log" 2>&1 || status=$?
 
   # The work folder of the `shop` repository's `feature` target.
   if node "$here/grade.ts" "$tmp/review-tour/shop-feature" >"$dir/grade.log" 2>&1; then

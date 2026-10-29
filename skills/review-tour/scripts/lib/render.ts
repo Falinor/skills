@@ -51,5 +51,6 @@ export function render(args: string[]): void {
   console.log(`Page: ${page}\nOpen: ${url}\n\n${handover(plan, url)}`);
   const offer = mechanicalOffer(plan, change);
   if (offer) console.log(`\n${offer}`);
-  if (values.open) openPage(page);
+  // Headless runs, such as the agent eval's, set REVIEW_TOUR_NO_OPEN so no run opens a browser tab.
+  if (values.open && !process.env.REVIEW_TOUR_NO_OPEN) openPage(page);
 }
