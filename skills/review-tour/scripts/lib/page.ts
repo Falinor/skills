@@ -19,7 +19,19 @@ export function escape(text: string): string {
 }
 
 const styles = `
-body { font: 16px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 72rem; padding: 1rem; }
+body { font: 16px/1.5 system-ui, sans-serif; margin: 0; display: grid; grid-template-columns: 17rem minmax(0, 1fr); }
+.content { max-width: 72rem; min-width: 0; padding: 1rem 1.5rem; }
+.sidebar { position: sticky; top: 0; align-self: start; box-sizing: border-box; height: 100vh; overflow-y: auto; padding: 1rem; border-right: 1px solid #ccc; font-size: 0.9rem; }
+.sidebar .progress { margin-top: 0; font-weight: 600; }
+.nav-tier { margin: 1rem 0 0.25rem; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+.nav-steps { list-style: none; margin: 0; padding: 0; }
+.nav-steps a { display: block; padding: 0.2rem 0.5rem; border-left: 3px solid transparent; text-decoration: none; overflow-wrap: anywhere; }
+.nav-steps a[aria-current="step"] { border-left-color: currentColor; font-weight: 600; }
+.nav-steps .number { display: inline-block; min-width: 1.5em; font-variant-numeric: tabular-nums; }
+@media (max-width: 50rem) {
+  body { display: block; }
+  .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid #ccc; }
+}
 code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .step { scroll-margin-top: 1rem; border-top: 1px solid #ccc; padding-top: 1rem; }
 .explanation { white-space: pre-wrap; }
@@ -47,6 +59,7 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mechanical th, .mechanical td { border-bottom: 1px solid #ddd; padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; }
 .mechanical .count { text-align: right; }
 .tier:last-child .step:last-child { min-height: calc(100vh - 2rem); }
+a:focus-visible, button:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
 `;
 
 // Navigation: j and k move to the next and previous step from the step being

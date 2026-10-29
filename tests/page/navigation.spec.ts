@@ -99,6 +99,19 @@ test('j and k start from the step being read, wherever the reader scrolled', asy
   await expectAtStep(page, 2);
 });
 
+test('every step is reachable from the sidebar with Tab and Enter, with a visible focus', async ({ page }) => {
+  for (const [index, title] of titles.entries()) {
+    await page.goto(pageUrl);
+    for (let tab = 0; tab <= index; tab++) await page.keyboard.press('Tab');
+
+    const link = sidebar(page).getByRole('link', { name: `${index + 1} ${title}` });
+    await expect(link).toBeFocused();
+    await expect(link).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
+    await expectAtStep(page, index + 1);
+  }
+});
+
 test('the page runs only its own script, allowed by hash', async ({ page }) => {
   await page.goto(pageUrl);
 
