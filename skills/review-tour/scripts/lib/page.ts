@@ -1,7 +1,7 @@
 // Builds the tour page as one self-contained HTML file. Every piece of text
 // from the tour plan or the patch goes through `escape`.
 import type { FileDiff, Hunk } from './patch.ts';
-import type { TourPlan } from './plan.ts';
+import type { Intent, TourPlan } from './plan.ts';
 import type { Change } from './work-folder.ts';
 
 export function escape(text: string): string {
@@ -26,7 +26,27 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .diff .add { background: #e6ffec; }
 .diff .del { background: #ffebe9; }
 .diff .hunk-header td, .diff .note td { color: #888; }
+.intent { border: 1px solid #ccc; border-radius: 6px; padding: 0 1rem; margin-bottom: 1rem; }
+.intent .why { white-space: pre-wrap; font-size: 1.1rem; }
+.intent .visual { background: #f6f8fa; padding: 0.75rem; overflow-x: auto; }
+.door.one-way { color: #b42318; font-weight: 600; }
 `;
+
+const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
+
+/** The opening of the page: why the change exists, one visual of its shape, and its merge danger. */
+function renderIntent({ why, visual, mergeDanger }: Intent): string {
+  return (
+    `<section class="intent" id="intent" aria-labelledby="intent-title">` +
+    `<h2 id="intent-title">Intent</h2>` +
+    `<p class="why">${escape(why.trim())}</p>` +
+    `<pre class="visual"><code>${escape(visual.trimEnd())}</code></pre>` +
+    `<p class="merge-danger"><strong>Merge danger:</strong> ` +
+    `<span class="door ${mergeDanger.door}">${doors[mergeDanger.door]}</span>, ` +
+    `blast radius: ${escape(mergeDanger.blastRadius)}</p>` +
+    `</section>`
+  );
+}
 
 const signs = { add: '+', del: '-', context: ' ', note: '' } as const;
 
@@ -77,6 +97,7 @@ export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, Fi
 <p>${escape(change.repository)} · against <code>${escape(change.base)}</code> · head <code>${escape(change.head.slice(0, 12))}</code></p>
 </header>
 <main>
+${renderIntent(plan.intent)}
 ${steps.join('\n')}
 </main>
 </body>
