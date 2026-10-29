@@ -32,7 +32,7 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .door.one-way { color: #b42318; font-weight: 600; }
 `;
 
-const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
+export const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
 
 /** The opening of the page: why the change exists, one visual of its shape, and its merge danger. */
 function renderIntent({ why, visual, mergeDanger }: Intent): string {

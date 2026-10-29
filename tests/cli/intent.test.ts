@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
 import { prepareChange } from '../support/tour.ts';
 
@@ -68,4 +69,53 @@ test('the page opens with the escaped intent: why, visual and merge danger', () 
   assert.match(section, /One-way door/);
   assert.match(section, /sign-in &amp; sessions/);
   assert.ok(!html.includes('<em>expired') && !html.includes('<throws>'));
+});
+
+test('prints the intent and the step list with #step-N links once the page is written', () => {
+  const { folder, result } = renderPlan({
+    intent: {
+      why: 'Expired tokens start sessions.\nCheck them first.',
+      visual: 'startSession(token)\n  validateToken(token)',
+      mergeDanger: { door: 'one-way', blastRadius: 'sign-in' },
+    },
+    steps: [{ title: 'Check tokens', files: ['a.txt'], explanation: '' }],
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const page = pathToFileURL(path.join(folder, 'tour.html')).href;
+  assert.ok(
+    result.stdout.includes(
+      [
+        '## Intent',
+        '',
+        'Expired tokens start sessions.\nCheck them first.',
+        '',
+        '```text\nstartSession(token)\n  validateToken(token)\n```',
+        '',
+        'Merge danger: One-way door, blast radius: sign-in',
+        '',
+        '## Steps',
+        '',
+        `1. Check tokens: ${page}#step-1`,
+      ].join('\n'),
+    ),
+    result.stdout,
+  );
+});
+
+test('prints plan text without terminal control characters, each step on one line', () => {
+  const { result } = renderPlan({
+    intent: {
+      why: 'Why \u001b[31mred\u001b[0m.',
+      visual: '```diff\n+ added\n```',
+      mergeDanger: { door: 'two-way', blastRadius: 'none' },
+    },
+    steps: [{ title: 'Two\nlines \u0007here', files: ['a.txt'], explanation: '' }],
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f]/.test(result.stdout), JSON.stringify(result.stdout));
+  assert.match(result.stdout, /Why \[31mred\[0m\./);
+  assert.match(result.stdout, /^````text\n```diff\n\+ added\n```\n````$/m);
+  assert.match(result.stdout, /^1\. Two lines here: file:.*#step-1$/m);
 });

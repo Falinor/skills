@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
+import { handover } from './handover.ts';
 import { renderPage } from './page.ts';
 import { cutPatch } from './patch.ts';
 import { validatePlan } from './plan.ts';
@@ -44,6 +45,7 @@ export function render(args: string[]): void {
   const page = path.join(folder, workFolderFiles.page);
   fs.writeFileSync(page, renderPage(change, plan, cutPatch(patch, change.files)));
 
-  console.log(`Page: ${page}\nOpen: ${pathToFileURL(page).href}`);
+  const url = pathToFileURL(page).href;
+  console.log(`Page: ${page}\nOpen: ${url}\n\n${handover(plan, url)}`);
   if (values.open) openPage(page);
 }
