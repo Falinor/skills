@@ -17,8 +17,8 @@ test.beforeAll(() => {
   });
   writePlan(folder, {
     steps: [
-      { title: 'First', files: ['first.txt'], explanation: 'The first file.' },
-      { title: 'Second', files: ['second.txt'], explanation: 'The second file.' },
+      { title: 'First', tier: 'core-logic', files: ['first.txt'], explanation: 'The first file.' },
+      { title: 'Second', tier: 'core-logic', files: ['second.txt'], explanation: 'The second file.' },
     ],
   });
   const result = sandbox.run(['render', folder], { cwd: repo.dir });

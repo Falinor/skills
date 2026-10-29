@@ -2,7 +2,17 @@
 // contains diff text; the renderer cuts diffs from the captured patch.
 import { UserError } from './errors.ts';
 import type { FileDiff } from './patch.ts';
-import type { Change } from './work-folder.ts';
+import { mayBeMechanical, type Change } from './work-folder.ts';
+
+/** Tiers in the order a tour presents them. */
+export const tiers = ['core-logic', 'wiring', 'mechanical'] as const;
+export type Tier = (typeof tiers)[number];
+
+export const tierLabels: Record<Tier, string> = {
+  'core-logic': 'Core logic',
+  wiring: 'Wiring',
+  mechanical: 'Mechanical',
+};
 
 export const calloutTags = ['Subtle', 'Breaking', 'Security', 'Perf', 'Concurrency', 'One-way door'] as const;
 
@@ -14,7 +24,10 @@ export type Callout = { file: string; line: number; side: 'old' | 'new'; tag: st
 
 export type Step = {
   title: string;
+  tier: Tier;
   files: string[];
+  /** Files the agent believes mechanical but that carry no proof; only core-logic steps hold them. */
+  unprovenMechanical?: string[];
   explanation: string;
   /** Reviewer questions: what the reviewer should answer from their own knowledge. */
   questions?: string[];
@@ -92,10 +105,46 @@ function checkCallouts(plan: TourPlan, _change: Change, diffs: Map<string, FileD
   );
 }
 
+/** Steps run core logic, then wiring, then mechanical. */
+function checkTierOrder(plan: TourPlan): string[] {
+  return plan.steps.flatMap((step, index) => {
+    const later = plan.steps.slice(0, index).find((earlier) => tiers.indexOf(earlier.tier) > tiers.indexOf(step.tier));
+    return later
+      ? [`step ${index + 1} (${step.tier}) comes after a ${later.tier} step; order steps ${tiers.join(', then ')}`]
+      : [];
+  });
+}
+
+/** Only proven or base-declared generated files sit in the mechanical tier; unproven ones stay in core logic, flagged. */
+function checkMechanical(plan: TourPlan, change: Change): string[] {
+  const byPath = new Map(change.files.map((file) => [file.path, file]));
+  return plan.steps.flatMap((step, index) => {
+    const at = `step ${index + 1}`;
+    const violations: string[] = [];
+    if (step.tier === 'mechanical') {
+      for (const file of step.files) {
+        const changed = byPath.get(file);
+        if (changed && !mayBeMechanical(changed)) {
+          violations.push(
+            `${at}: ${file} has no mechanical proof; move it to a core-logic step and list it in "unprovenMechanical"`,
+          );
+        }
+      }
+    }
+    for (const file of step.unprovenMechanical ?? []) {
+      if (!step.files.includes(file)) violations.push(`${at}: ${file} is flagged unproven mechanical but is not in this step`);
+      else if (step.tier !== 'core-logic') {
+        violations.push(`${at}: ${file} is flagged unproven mechanical, which only core-logic steps hold`);
+      }
+    }
+    return violations;
+  });
+}
+
 type Rule = (plan: TourPlan, change: Change, diffs: Map<string, FileDiff>) => string[];
 
 /** Rules checked once the plan is well formed. */
-const rules: Rule[] = [checkCoverage, checkCallouts];
+const rules: Rule[] = [checkCoverage, checkCallouts, checkTierOrder, checkMechanical];
 
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isFilled = (value: unknown): value is string => isText(value) && value.trim() !== '';
@@ -143,8 +192,12 @@ function checkShape(raw: unknown): string[] {
     if (!isRecord(step)) return [`${at} must be an object`];
     const violations: string[] = [];
     if (!isText(step.title)) violations.push(`${at}: "title" must be text`);
+    if (!tiers.includes(step.tier as Tier)) violations.push(`${at}: "tier" must be one of ${tiers.join(', ')}`);
     if (!Array.isArray(step.files) || !step.files.every(isText)) {
       violations.push(`${at}: "files" must be a list of paths`);
+    }
+    if (step.unprovenMechanical !== undefined && !(Array.isArray(step.unprovenMechanical) && step.unprovenMechanical.every(isText))) {
+      violations.push(`${at}: "unprovenMechanical" must be a list of paths`);
     }
     if (!isText(step.explanation)) violations.push(`${at}: "explanation" must be text`);
     violations.push(...checkAidsShape(step, at));

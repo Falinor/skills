@@ -18,8 +18,8 @@ test('renders each step under #step-N with its escaped explanation and the real 
   });
   writePlan(folder, {
     steps: [
-      { title: 'Grow <b>a</b>', files: ['a.txt'], explanation: '<script>alert(1)</script> & more' },
-      { title: 'Add b', files: ['b.txt'], explanation: 'Adds b.' },
+      { title: 'Grow <b>a</b>', tier: 'core-logic', files: ['a.txt'], explanation: '<script>alert(1)</script> & more' },
+      { title: 'Add b', tier: 'core-logic', files: ['b.txt'], explanation: 'Adds b.' },
     ],
   });
 
@@ -48,8 +48,8 @@ test('rejects a plan that misses or repeats files, listing every violation at on
   });
   writePlan(folder, {
     steps: [
-      { title: 'One', files: ['b.txt', 'x.txt'], explanation: '' },
-      { title: 'Two', files: ['b.txt'], explanation: '' },
+      { title: 'One', tier: 'core-logic', files: ['b.txt', 'x.txt'], explanation: '' },
+      { title: 'Two', tier: 'core-logic', files: ['b.txt'], explanation: '' },
     ],
   });
 
@@ -96,7 +96,7 @@ test('cuts each file of a mixed change into its own step', () => {
     { 'r.txt': 's.txt' },
   );
   writePlan(folder, {
-    steps: ['a.txt', 'd.txt', 's.txt', 'img.bin'].map((file) => ({ title: file, files: [file], explanation: '' })),
+    steps: ['a.txt', 'd.txt', 's.txt', 'img.bin'].map((file) => ({ title: file, tier: 'core-logic', files: [file], explanation: '' })),
   });
 
   const result = sandbox.run(['render', folder], { cwd: repo.dir });
@@ -114,7 +114,7 @@ test('cuts each file of a mixed change into its own step', () => {
 
 test('opens the page with the platform opener when asked', () => {
   const { folder, repo } = prepareChange(sandbox, { trunk: {}, feature: { 'a.txt': 'a\n' } });
-  writePlan(folder, { steps: [{ title: 'A', files: ['a.txt'], explanation: '' }] });
+  writePlan(folder, { steps: [{ title: 'A', tier: 'core-logic', files: ['a.txt'], explanation: '' }] });
   const openers = [sandbox.fake('open'), sandbox.fake('xdg-open')];
 
   const result = sandbox.run(['render', folder, '--open'], { cwd: repo.dir });

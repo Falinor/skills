@@ -32,9 +32,17 @@ export const sampleIntent = {
   mergeDanger: { door: 'two-way', blastRadius: 'none' },
 };
 
-/** Writes the tour plan, adding `sampleIntent` unless the plan has an `intent` key. */
+/** Puts a step without a `tier` key in core logic, for plans whose test is not about tiers. */
+const withTier = (step: unknown) =>
+  typeof step === 'object' && step !== null && !('tier' in step) ? { tier: 'core-logic', ...step } : step;
+
+/**
+ * Writes the tour plan, adding `sampleIntent` unless the plan has an `intent`
+ * key, and the core-logic tier to every step without a `tier` key.
+ */
 export function writePlan(folder: string, plan: object): void {
-  const full = 'intent' in plan ? plan : { intent: sampleIntent, ...plan };
+  const full: Record<string, unknown> = 'intent' in plan ? { ...plan } : { intent: sampleIntent, ...plan };
+  if (Array.isArray(full.steps)) full.steps = full.steps.map(withTier);
   fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(full, null, 2));
 }
 
