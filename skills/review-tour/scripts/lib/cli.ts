@@ -1,10 +1,11 @@
 import { UserError } from './errors.ts';
 import { prepare } from './prepare.ts';
+import { render } from './render.ts';
 import { requireTools } from './requirements.ts';
 
 type Command = (args: string[]) => void | Promise<void>;
 
-const commands: Record<string, Command> = { prepare };
+const commands: Record<string, Command> = { prepare, render };
 
 const usage = 'usage: review-tour <command> [arguments]';
 
