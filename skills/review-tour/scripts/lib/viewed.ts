@@ -67,9 +67,14 @@ export function viewed(args: string[]): void {
   const files = chosenFiles(plan, positionals[1]);
 
   const { host, id, states } = readViewedStates(change);
+  const byPath = new Map(change.files.map((file) => [file.path, file]));
+  // A rename GitHub didn't detect is listed as the old path deleted and the new one added.
+  const githubPaths = (file: string) => [file, byPath.get(file)?.oldPath].filter((name): name is string => name !== undefined && states.has(name));
+  const notListed = files.filter((file) => githubPaths(file).length === 0);
+  const listedPaths = files.flatMap(githubPaths);
   // DISMISSED means new changes since the reviewer last viewed the file: tick it again.
-  const toTick = files.filter((file) => states.has(file) && states.get(file) !== 'VIEWED');
-  const alreadyViewed = files.filter((file) => states.get(file) === 'VIEWED');
+  const toTick = listedPaths.filter((file) => states.get(file) !== 'VIEWED');
+  const alreadyViewed = listedPaths.filter((file) => states.get(file) === 'VIEWED');
 
   if (toTick.length > 0) {
     const declarations = toTick.map((_, index) => `, $p${index}: String!`).join('');
@@ -89,6 +94,9 @@ export function viewed(args: string[]): void {
         ? [`Ticked as Viewed on pull request #${number}: ${count(toTick)}`, ...listed(toTick)]
         : [`Nothing to tick on pull request #${number}.`]),
       ...(alreadyViewed.length > 0 ? [`Already viewed, left as they were: ${count(alreadyViewed)}`, ...listed(alreadyViewed)] : []),
+      ...(notListed.length > 0
+        ? [`Not among the pull request's files on GitHub, left alone: ${count(notListed)}`, ...listed(notListed)]
+        : []),
     ].join('\n'),
   );
 }

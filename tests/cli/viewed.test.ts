@@ -200,3 +200,15 @@ test("reads every page of the pull request's files before ticking", () => {
   assert.deepEqual(ticked(gh.log()), ['a.txt', 'b.txt']);
   assert.match(result.stdout, /^Already viewed, left as they were: 1 file\n {2}c\.txt$/m);
 });
+
+test("leaves alone, and names, chosen files GitHub doesn't list, and ticks both sides of a rename it lists apart", () => {
+  const tour = pullRequestTour();
+  // GitHub saw no rename: old.txt deleted and new.txt added. c.txt is not in its list.
+  const gh = github(tour.head, { 'a.txt': 'UNVIEWED', 'old.txt': 'UNVIEWED', 'new.txt': 'UNVIEWED' });
+
+  const result = sandbox.run(['viewed', tour.folder, '3-4'], { cwd: tour.clone.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(ticked(gh.log()), ['new.txt', 'old.txt']);
+  assert.match(result.stdout, /^Not among the pull request's files on GitHub, left alone: 1 file\n {2}c\.txt$/m);
+});
