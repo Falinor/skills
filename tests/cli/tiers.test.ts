@@ -129,3 +129,24 @@ test('presents core logic, then wiring, then the mechanical tier as tables witho
   assert.ok(mechanical.indexOf('pure rename') < mechanical.indexOf('Declared generated'));
   assert.doesNotMatch(mechanical, /fresh|kept/);
 });
+
+test('rejects callouts in the mechanical tier, which shows no diffs to hold them', () => {
+  const { folder, repo } = prepareMixedChange();
+  writePlan(folder, {
+    steps: [
+      { title: 'Logic', tier: 'core-logic', files: ['logic.ts', 'gen.ts'], explanation: '' },
+      {
+        title: 'Noise',
+        tier: 'mechanical',
+        files: ['new.ts', 'dist/app.js'],
+        explanation: '',
+        callouts: [{ file: 'dist/app.js', line: 1, side: 'new', tag: 'Security', text: 'Look here.' }],
+      },
+    ],
+  });
+
+  const result = sandbox.run(['render', folder], { cwd: repo.dir });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /step 2, callout 1: mechanical steps show no diffs/);
+});

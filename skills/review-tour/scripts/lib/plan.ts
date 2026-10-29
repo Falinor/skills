@@ -115,7 +115,10 @@ function checkTierOrder(plan: TourPlan): string[] {
   });
 }
 
-/** Only proven or base-declared generated files sit in the mechanical tier; unproven ones stay in core logic, flagged. */
+/**
+ * Only proven or base-declared generated files sit in the mechanical tier,
+ * shown without diffs, so without callouts; unproven ones stay in core logic, flagged.
+ */
 function checkMechanical(plan: TourPlan, change: Change): string[] {
   const byPath = new Map(change.files.map((file) => [file.path, file]));
   return plan.steps.flatMap((step, index) => {
@@ -130,6 +133,9 @@ function checkMechanical(plan: TourPlan, change: Change): string[] {
           );
         }
       }
+      (step.callouts ?? []).forEach((_, callout) =>
+        violations.push(`${at}, callout ${callout + 1}: mechanical steps show no diffs to hold it; a file worth a callout belongs in core logic`),
+      );
     }
     for (const file of step.unprovenMechanical ?? []) {
       if (!step.files.includes(file)) violations.push(`${at}: ${file} is flagged unproven mechanical but is not in this step`);
