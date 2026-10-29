@@ -1,28 +1,17 @@
-import { spawnSync } from 'node:child_process';
+import { run, runBytes, tryRun, type RunResult } from './spawn.ts';
 import type { ChangedFile } from './work-folder.ts';
-import { UserError } from './errors.ts';
 
-export type GitResult = { status: number | null; stdout: string; stderr: string };
+/** git never stops to ask for credentials. */
+const gitOptions = (cwd: string, input?: string) => ({ cwd, input, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
 
 /** Runs git without throwing; for commands whose failure is an answer. */
-export function tryGit(cwd: string, args: string[]): GitResult {
-  const result = spawnSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-    maxBuffer: 1024 ** 3,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  });
-  if (result.error) throw result.error;
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+export function tryGit(cwd: string, args: string[]): RunResult {
+  return tryRun('git', args, gitOptions(cwd));
 }
 
-/** Runs git and returns its stdout; a failure stops the tool with git's message. */
-export function git(cwd: string, args: string[]): string {
-  const result = tryGit(cwd, args);
-  if (result.status !== 0) {
-    throw new UserError(`git ${args.join(' ')} failed:\n${result.stderr.trim()}`);
-  }
-  return result.stdout;
+/** Runs git, feeding it `input`, and returns its stdout; a failure stops the tool with git's message. */
+export function git(cwd: string, args: string[], input?: string): string {
+  return run('git', args, gitOptions(cwd, input));
 }
 
 /** The commit id `ref` names, or undefined when it names no commit. */
@@ -54,22 +43,16 @@ export function readBlobs(cwd: string, names: string[]): Map<string, string> {
   const unique = [...new Set(names)];
   const blobs = new Map<string, string>();
   if (unique.length === 0) return blobs;
-  const result = spawnSync('git', ['cat-file', '--batch', '-z'], {
-    cwd,
-    input: unique.map((name) => `${name}\0`).join(''),
-    maxBuffer: 1024 ** 3,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new UserError(`git cat-file --batch failed:\n${result.stderr.toString().trim()}`);
+  const stdout = runBytes('git', ['cat-file', '--batch', '-z'], gitOptions(cwd, unique.map((name) => `${name}\0`).join('')));
   // Each object comes as `<id> <type> <size>\n<content>\n`, a missing one as `<name> missing\n`.
   let offset = 0;
   for (const name of unique) {
-    const headerEnd = result.stdout.indexOf(10, offset);
-    const header = result.stdout.toString('latin1', offset, headerEnd).split(' ');
+    const headerEnd = stdout.indexOf(10, offset);
+    const header = stdout.toString('latin1', offset, headerEnd).split(' ');
     offset = headerEnd + 1;
     if (header.length !== 3) continue; // missing or ambiguous: no content follows
     const size = Number(header[2]);
-    if (header[1] === 'blob') blobs.set(name, result.stdout.toString('latin1', offset, offset + size));
+    if (header[1] === 'blob') blobs.set(name, stdout.toString('latin1', offset, offset + size));
     offset += size + 1;
   }
   return blobs;
@@ -136,16 +119,9 @@ export function listMoves(cwd: string, from: string, to: string): FileMoves[] {
 /** The paths that `source`'s `.gitattributes` mark `linguist-generated`. */
 export function linguistGenerated(cwd: string, source: string, paths: string[]): Set<string> {
   if (paths.length === 0) return new Set();
-  const result = spawnSync('git', ['check-attr', '-z', '--stdin', '--source', source, 'linguist-generated'], {
-    cwd,
-    input: paths.map((file) => `${file}\0`).join(''),
-    encoding: 'utf8',
-    maxBuffer: 1024 ** 3,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new UserError(`git check-attr failed:\n${result.stderr.trim()}`);
+  const input = paths.map((file) => `${file}\0`).join('');
   // Output is `path\0attribute\0value\0` per path.
-  const fields = result.stdout.split('\0');
+  const fields = git(cwd, ['check-attr', '-z', '--stdin', '--source', source, 'linguist-generated'], input).split('\0');
   const generated = new Set<string>();
   for (let i = 0; i + 2 < fields.length; i += 3) {
     if (fields[i + 2] === 'set' || fields[i + 2] === 'true') generated.add(fields[i]);
