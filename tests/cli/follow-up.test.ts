@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeGh, pullRequestRepo } from '../support/github.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
+import { writePlan } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
@@ -165,4 +166,39 @@ test('covers the full change and says why when replaying the earlier head onto t
   const { change } = readCapture(folderOf('feature', earlier));
   assert.deepEqual(paths(change), ['a.txt', 'b.txt']);
   assert.equal(change.followUp.from, undefined);
+});
+
+/** The page's visible text. */
+const pageText = (folder: string) =>
+  fs.readFileSync(path.join(folder, 'tour.html'), 'utf8').replace(/<[^>]*>/g, '').replace(/&#39;/g, "'");
+
+test('validates the plan against the narrowed range and says on the page what the tour covers', () => {
+  const { repo, earlier } = branchToured();
+  repo.write({ 'b.txt': 'first\nsecond\n' });
+  repo.commit('address feedback');
+  sandbox.run(['prepare', 'feature', '--base', 'trunk', '--since', earlier], { cwd: repo.dir });
+  const folder = folderOf('feature', earlier);
+
+  writePlan(folder, { steps: [{ title: 'Both rounds', files: ['b.txt', 'old.txt'], explanation: 'x' }] });
+  const rejected = sandbox.run(['render', folder], { cwd: repo.dir });
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /old\.txt is not part of the change/);
+
+  writePlan(folder, { steps: [{ title: 'Second round', files: ['b.txt'], explanation: 'x' }] });
+  const rendered = sandbox.run(['render', folder], { cwd: repo.dir });
+  assert.equal(rendered.status, 0, rendered.stderr);
+  assert.match(pageText(folder), new RegExp(`Follow-up: only what changed since ${earlier}\\.`));
+});
+
+test('says on the page why a follow-up covers the full change', () => {
+  const { repo, earlier } = branchToured();
+  repo.git('commit', '-q', '--amend', '-m', 'first round, reworded');
+  sandbox.run(['prepare', 'feature', '--base', 'trunk', '--since', earlier], { cwd: repo.dir });
+  const folder = folderOf('feature', earlier);
+  writePlan(folder, { steps: [{ title: 'Everything', files: ['b.txt', 'old.txt'], explanation: 'x' }] });
+
+  const rendered = sandbox.run(['render', folder], { cwd: repo.dir });
+
+  assert.equal(rendered.status, 0, rendered.stderr);
+  assert.match(pageText(folder), /Follow-up: covers the full change, because .* is no longer in the history of feature/);
 });
