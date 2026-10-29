@@ -22,7 +22,7 @@ const pathsOf = (entry: RawEntry) => [entry.oldPath ?? entry.path, entry.path];
 
 /** A text file edited in place or renamed with edits, a regular file on both sides with its mode kept. */
 const editedText = ({ file, entry }: Candidate) =>
-  (entry.status === 'M' || entry.status.startsWith('R')) &&
+  (entry.status === 'M' || entry.status === 'R') &&
   entry.oldBlob !== entry.newBlob &&
   file.additions !== null &&
   isRegular(entry.oldMode) &&
@@ -36,7 +36,7 @@ function readVersions(root: string, entries: RawEntry[]): { before: string; afte
 
 /** Renamed at 100% similarity, mode unchanged. */
 const pureRename: Prover = ({ candidates }) =>
-  indexesWhere(candidates, ({ entry }) => entry.status === 'R100' && entry.oldMode === entry.newMode);
+  indexesWhere(candidates, ({ entry }) => entry.status === 'R' && entry.similarity === 100 && entry.oldMode === entry.newMode);
 
 const extensionOf = (file: string) => path.extname(file).slice(1).toLowerCase();
 

@@ -1,5 +1,5 @@
 import { run, runBytes, tryRun, type RunResult } from './spawn.ts';
-import type { ChangedFile } from './work-folder.ts';
+import type { ChangedFile, FileStatus } from './work-folder.ts';
 
 /** git never stops to ask for credentials. */
 const gitOptions = (cwd: string, input?: string) => ({ cwd, input, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
@@ -137,15 +137,16 @@ export function capturePatch({ root, from, to }: Range): string {
   return diff(root, [from, to]);
 }
 
-/** git's raw listing of one changed file: modes, blob ids and status with its score. */
+/** git's raw listing of one changed file: modes, blob ids, and status with its similarity. */
 export type RawEntry = {
   oldMode: string;
   newMode: string;
   /** All zeros when the file did not exist on that side. */
   oldBlob: string;
   newBlob: string;
-  /** The status letter and, for renames and copies, the similarity score: `M`, `R100`, `R087`. */
-  status: string;
+  status: FileStatus;
+  /** For renames and copies, how similar the two versions are, in percent. */
+  similarity?: number;
   oldPath?: string;
   path: string;
 };
@@ -155,10 +156,16 @@ function listRawEntries({ root, from, to }: Range): RawEntry[] {
   const raw = diff(root, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
   const entries: RawEntry[] = [];
   for (let i = 0; i < raw.length && raw[i]; ) {
-    const [oldMode, newMode, oldBlob, newBlob, status] = raw[i++].slice(1).split(' ');
-    const renamed = status[0] === 'R' || status[0] === 'C';
+    const [oldMode, newMode, oldBlob, newBlob, statusField] = raw[i++].slice(1).split(' ');
+    // The status letter, followed by the similarity for renames and copies: `M`, `R100`, `C087`.
+    const status = statusField[0] as FileStatus;
+    const renamed = status === 'R' || status === 'C';
     const oldPath = renamed ? raw[i++] : undefined;
-    entries.push({ oldMode, newMode, oldBlob, newBlob, status, ...(oldPath && { oldPath }), path: raw[i++] });
+    entries.push({
+      oldMode, newMode, oldBlob, newBlob, status,
+      ...(renamed && { similarity: Number(statusField.slice(1)), oldPath }),
+      path: raw[i++],
+    });
   }
   return entries;
 }
@@ -171,7 +178,7 @@ export function listChangedFiles(range: Range): ListedFile[] {
   const numstat = diff(range.root, ['--numstat', '-z', range.from, range.to]).split('\0');
 
   const listed: ListedFile[] = listRawEntries(range).map((entry) => ({
-    file: { ...(entry.oldPath && { oldPath: entry.oldPath }), path: entry.path, status: entry.status[0], additions: null, deletions: null },
+    file: { ...(entry.oldPath && { oldPath: entry.oldPath }), path: entry.path, status: entry.status, additions: null, deletions: null },
     entry,
   }));
 

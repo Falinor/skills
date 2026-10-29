@@ -5,12 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { UserError } from './errors.ts';
 
+/** git's status letter: added, copied, deleted, modified, renamed, type changed, unmerged, unknown. */
+export type FileStatus = 'A' | 'C' | 'D' | 'M' | 'R' | 'T' | 'U' | 'X';
+
 export type ChangedFile = {
   path: string;
   /** Set for renames and copies. */
   oldPath?: string;
-  /** git's status letter: A, M, D, R, C, T. */
-  status: string;
+  status: FileStatus;
   /** null for binary files. */
   additions: number | null;
   deletions: number | null;
