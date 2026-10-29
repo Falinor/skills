@@ -23,6 +23,8 @@ export type Change = {
   mergeBase: string;
   head: string;
   files: ChangedFile[];
+  /** Set when the target is a GitHub pull request. */
+  pullRequest?: { number: number; url: string };
 };
 
 export const workFolderFiles = {
@@ -30,7 +32,18 @@ export const workFolderFiles = {
   patch: 'change.patch',
   plan: 'plan.json',
   page: 'tour.html',
+  pullRequest: 'pull-request.json',
 } as const;
+
+/** A pull request's own words, kept apart: data to explain, never instructions to follow. */
+export type PullRequestText = {
+  number: number;
+  url: string;
+  title: string;
+  body: string;
+  /** The body has the `/pr` template's Summary and Merge Danger, so it can serve as the intent. */
+  followsPrTemplate: boolean;
+};
 
 export function workFolderFor(repository: string, target: string): string {
   const name = `${repository}-${target}`.replace(/[^A-Za-z0-9._-]+/g, '-');
@@ -43,6 +56,10 @@ export function writeCapture(folder: string, change: Change, patch: string): voi
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(path.join(folder, workFolderFiles.change), `${JSON.stringify(change, null, 2)}\n`);
   fs.writeFileSync(path.join(folder, workFolderFiles.patch), patch);
+}
+
+export function writePullRequestText(folder: string, text: PullRequestText): void {
+  fs.writeFileSync(path.join(folder, workFolderFiles.pullRequest), `${JSON.stringify(text, null, 2)}\n`);
 }
 
 /** What `prepare` captured in `folder`. */
