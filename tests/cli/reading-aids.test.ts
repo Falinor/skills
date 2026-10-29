@@ -246,3 +246,22 @@ test('escapes hostile text in prose, file names and diffs, keeping it readable',
   }
   assert.ok(!step.includes(breakout));
 });
+
+test('renders the intent\'s why and blast radius as inline Markdown', () => {
+  const { folder, repo } = prepareChange(sandbox, { trunk: {}, feature: { 'a.txt': 'a\n' } });
+  writePlan(folder, {
+    intent: {
+      why: 'Sessions start with **expired** tokens.\nCheck `expiresAt` first.',
+      visual: 'start()',
+      mergeDanger: { door: 'two-way', blastRadius: 'the `session` module' },
+    },
+    steps: [{ title: 'A', files: ['a.txt'], explanation: '' }],
+  });
+
+  const result = render(folder, repo.dir);
+
+  assert.equal(result.status, 0, result.stderr);
+  const html = pageOf(folder);
+  assert.ok(html.includes('Sessions start with <strong>expired</strong> tokens.\nCheck <code>expiresAt</code> first.'));
+  assert.ok(html.includes('blast radius: the <code>session</code> module'));
+});

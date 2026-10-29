@@ -30,6 +30,11 @@ export function renderHostileTour(sandbox: Sandbox): string {
     feature: { 'hostile.html': `start\n${content}`, [hostileName]: content },
   });
   writePlan(folder, {
+    intent: {
+      why: payloads.slice(0, 3).join('\n'),
+      visual: payloads.join('\n'),
+      mergeDanger: { door: 'one-way', blastRadius: payloads[3] },
+    },
     steps: [
       {
         title: payloads[0],

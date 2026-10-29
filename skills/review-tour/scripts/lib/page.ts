@@ -47,11 +47,11 @@ function renderIntent({ why, visual, mergeDanger }: Intent): string {
   return (
     `<section class="intent" id="intent" aria-labelledby="intent-title">` +
     `<h2 id="intent-title">Intent</h2>` +
-    `<p class="why">${escape(why.trim())}</p>` +
+    `<p class="why">${inlineMarkdown(why.trim())}</p>` +
     `<pre class="visual"><code>${escape(visual.trimEnd())}</code></pre>` +
     `<p class="merge-danger"><strong>Merge danger:</strong> ` +
     `<span class="door ${mergeDanger.door}">${doors[mergeDanger.door]}</span>, ` +
-    `blast radius: ${escape(mergeDanger.blastRadius)}</p>` +
+    `blast radius: ${inlineMarkdown(mergeDanger.blastRadius)}</p>` +
     `</section>`
   );
 }
