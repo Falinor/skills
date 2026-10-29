@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["skills/**/*.ts", "tests/**/*.ts", "playwright.config.ts"]
+  "include": ["skills/**/*.ts", "tests/**/*.ts", "evals/**/*.ts", "playwright.config.ts"]
 }
