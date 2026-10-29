@@ -1,12 +1,28 @@
 // The tour plan: what the agent writes into the work folder. It never
 // contains diff text; the renderer cuts diffs from the captured patch.
 import { UserError } from './errors.ts';
+import type { FileDiff } from './patch.ts';
 import type { Change } from './work-folder.ts';
+
+export const calloutTags = ['Subtle', 'Breaking', 'Security', 'Perf', 'Concurrency', 'One-way door'] as const;
+
+/** One concrete input followed through the old and the new code, one entry per point of the run. */
+export type Trace = { input: string; old: string[]; new: string[] };
+
+/** A tagged warning anchored to one line of a file's diff, on its old or new side. */
+export type Callout = { file: string; line: number; side: 'old' | 'new'; tag: string; text: string };
 
 export type Step = {
   title: string;
   files: string[];
   explanation: string;
+  /** Reviewer questions: what the reviewer should answer from their own knowledge. */
+  questions?: string[];
+  callouts?: Callout[];
+  /** Plain-text pseudocode for dense logic, shown as written. */
+  pseudocode?: string;
+  /** For surprising behaviour changes: where the old and new runs part ways. */
+  trace?: Trace;
 };
 
 /** The opening of a tour: why the change exists, one visual of its shape, and its merge danger. */
@@ -40,15 +56,85 @@ function checkCoverage(plan: TourPlan, change: Change): string[] {
   return violations;
 }
 
-type Rule = (plan: TourPlan, change: Change) => string[];
+const listTags = `${calloutTags.slice(0, -1).join(', ')} or ${calloutTags.at(-1)}`;
+
+/** Whether `diff` shows `line` on `side`, as an added, removed or context line. */
+function showsLine(diff: FileDiff, side: Callout['side'], line: number): boolean {
+  return diff.hunks.some((hunk) =>
+    hunk.lines.some((shown) => (side === 'old' ? shown.oldNumber : shown.newNumber) === line),
+  );
+}
+
+/** Why the callout's anchor is not a line its file's diff shows on that side, if it is not. */
+function misplacedAnchor({ file, line, side }: Callout, diff: FileDiff): string | undefined {
+  if (showsLine(diff, side, line)) return undefined;
+  const other = side === 'old' ? 'new' : 'old';
+  return showsLine(diff, other, line)
+    ? `line ${line} of ${file} is on the ${other} side, not the ${side}`
+    : `${side} line ${line} of ${file} is outside every hunk`;
+}
+
+/** Every callout carries a known tag and sits on a line its step's diff shows, on the side it names. */
+function checkCallouts(plan: TourPlan, _change: Change, diffs: Map<string, FileDiff>): string[] {
+  return plan.steps.flatMap((step, stepIndex) =>
+    (step.callouts ?? []).flatMap((callout, index) => {
+      const at = `step ${stepIndex + 1}, callout ${index + 1}`;
+      const violations: string[] = [];
+      if (!(calloutTags as readonly string[]).includes(callout.tag)) {
+        violations.push(`${at}: unknown tag "${callout.tag}"; use ${listTags}`);
+      }
+      const diff = diffs.get(callout.file);
+      const misplaced = diff && misplacedAnchor(callout, diff);
+      if (!step.files.includes(callout.file)) violations.push(`${at}: ${callout.file} is not in this step`);
+      else if (misplaced) violations.push(`${at}: ${misplaced}`);
+      return violations;
+    }),
+  );
+}
+
+type Rule = (plan: TourPlan, change: Change, diffs: Map<string, FileDiff>) => string[];
 
 /** Rules checked once the plan is well formed. */
-const rules: Rule[] = [checkCoverage];
+const rules: Rule[] = [checkCoverage, checkCallouts];
 
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isFilled = (value: unknown): value is string => isText(value) && value.trim() !== '';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isTextList = (value: unknown): value is string[] => Array.isArray(value) && value.every(isText);
+
+function checkCalloutShape(callout: unknown, at: string): string[] {
+  if (!isRecord(callout)) return [`${at} must be an object`];
+  const violations: string[] = [];
+  if (!isText(callout.file)) violations.push(`${at}: "file" must be text`);
+  if (!Number.isInteger(callout.line) || (callout.line as number) < 1) {
+    violations.push(`${at}: "line" must be a line number`);
+  }
+  if (callout.side !== 'old' && callout.side !== 'new') violations.push(`${at}: "side" must be "old" or "new"`);
+  if (!isText(callout.tag)) violations.push(`${at}: "tag" must be text`);
+  if (!isText(callout.text)) violations.push(`${at}: "text" must be text`);
+  return violations;
+}
+
+/** Reading aids are optional; when present they must be well formed. */
+function checkAidsShape(step: Record<string, unknown>, at: string): string[] {
+  const { questions, pseudocode, trace, callouts } = step;
+  const violations: string[] = [];
+  if (questions !== undefined && !isTextList(questions)) violations.push(`${at}: "questions" must be a list of text`);
+  if (pseudocode !== undefined && !isText(pseudocode)) violations.push(`${at}: "pseudocode" must be text`);
+  if (
+    trace !== undefined &&
+    !(isRecord(trace) && isText(trace.input) && isTextList(trace.old) && isTextList(trace.new))
+  ) {
+    violations.push(`${at}: "trace" must have text "input" and lists of text "old" and "new"`);
+  }
+  if (callouts !== undefined && !Array.isArray(callouts)) violations.push(`${at}: "callouts" must be a list`);
+  if (Array.isArray(callouts)) {
+    violations.push(...callouts.flatMap((callout, index) => checkCalloutShape(callout, `${at}, callout ${index + 1}`)));
+  }
+  return violations;
+}
 
 function checkShape(raw: unknown): string[] {
   if (!isRecord(raw) || !Array.isArray(raw.steps)) return ['the plan must be an object with a "steps" list'];
@@ -61,6 +147,7 @@ function checkShape(raw: unknown): string[] {
       violations.push(`${at}: "files" must be a list of paths`);
     }
     if (!isText(step.explanation)) violations.push(`${at}: "explanation" must be text`);
+    violations.push(...checkAidsShape(step, at));
     return violations;
   });
 }
@@ -88,9 +175,9 @@ function checkIntent(raw: unknown): string[] {
 }
 
 /** The plan, once it is well formed and obeys every rule; otherwise stops with every violation. */
-export function validatePlan(raw: unknown, change: Change): TourPlan {
+export function validatePlan(raw: unknown, change: Change, diffs: Map<string, FileDiff>): TourPlan {
   const shape = [...checkIntent(raw), ...checkShape(raw)];
-  const violations = shape.length > 0 ? shape : rules.flatMap((rule) => rule(raw as TourPlan, change));
+  const violations = shape.length > 0 ? shape : rules.flatMap((rule) => rule(raw as TourPlan, change, diffs));
   if (violations.length > 0) {
     throw new UserError(`the tour plan is invalid:\n${violations.map((violation) => `- ${violation}`).join('\n')}`);
   }
