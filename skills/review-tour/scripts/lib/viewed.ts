@@ -10,7 +10,11 @@ import { readPlan } from './render.ts';
 import { freshPullRequest } from './stale-tour.ts';
 import { readCapture, type Change } from './work-folder.ts';
 
-const usage = 'usage: review-tour viewed <work-folder> <steps>\n  steps: a step number (3), a range (1-4), a list (1,3,5) or both (1-4,7)';
+const usage = [
+  'usage: review-tour viewed <work-folder> <steps|mechanical>',
+  '  steps: a step number (3), a range (1-4), a list (1,3,5) or both (1-4,7)',
+  '  mechanical: the proven mechanical batch, every proven file of the mechanical tier',
+].join('\n');
 
 type ChangedFileState = { path: string; viewerViewedState: 'VIEWED' | 'UNVIEWED' | 'DISMISSED' };
 
@@ -58,13 +62,26 @@ function readViewedStates(change: Change) {
 const count = (files: string[]) => (files.length === 1 ? '1 file' : `${files.length} files`);
 const listed = (files: string[]) => files.map((file) => `  ${file}`);
 
+/**
+ * The proven mechanical batch: the files of the mechanical tier that carry a
+ * mechanical proof. The tier's declared generated files are not proven, so
+ * they stay out (`declared`); ticking their step by number ticks them.
+ */
+export function mechanicalBatch(plan: TourPlan, change: Change): { proven: string[]; declared: string[] } {
+  const byPath = new Map(change.files.map((file) => [file.path, file]));
+  const isProven = (file: string) => (byPath.get(file)?.proofs?.length ?? 0) > 0;
+  const files = plan.steps.filter((step) => step.tier === 'mechanical').flatMap((step) => step.files);
+  return { proven: files.filter(isProven), declared: files.filter((file) => !isProven(file)) };
+}
+
 /** Ticks the chosen files as Viewed on the pull request and prints what it ticked. */
 export function viewed(args: string[]): void {
   const { positionals } = parseCommandArgs(args, {}, usage, 2);
   const folder = path.resolve(positionals[0]);
   const { change, patch } = readCapture(folder);
   const plan = validatePlan(readPlan(folder), change, cutPatch(patch, change.files));
-  const files = chosenFiles(plan, positionals[1]);
+  const batch = positionals[1] === 'mechanical' ? mechanicalBatch(plan, change) : undefined;
+  const files = batch ? batch.proven : chosenFiles(plan, positionals[1]);
 
   const { host, id, states } = readViewedStates(change);
   const byPath = new Map(change.files.map((file) => [file.path, file]));
@@ -96,6 +113,9 @@ export function viewed(args: string[]): void {
       ...(alreadyViewed.length > 0 ? [`Already viewed, left as they were: ${count(alreadyViewed)}`, ...listed(alreadyViewed)] : []),
       ...(notListed.length > 0
         ? [`Not among the pull request's files on GitHub, left alone: ${count(notListed)}`, ...listed(notListed)]
+        : []),
+      ...(batch && batch.declared.length > 0
+        ? [`Declared generated, not proven, so left out of the batch: ${count(batch.declared)}`, ...listed(batch.declared)]
         : []),
     ].join('\n'),
   );
