@@ -17,6 +17,23 @@ type Prover = (range: Range) => Set<number>;
 
 const isRegular = (mode: string) => mode === '100644' || mode === '100755';
 
+/** The file's path before and after the change; the same one unless it was renamed. */
+const pathsOf = (entry: RawEntry) => [entry.oldPath ?? entry.path, entry.path];
+
+/** A text file edited in place or renamed with edits, a regular file on both sides with its mode kept. */
+const editedText = ({ file, entry }: Candidate) =>
+  (entry.status === 'M' || entry.status.startsWith('R')) &&
+  entry.oldBlob !== entry.newBlob &&
+  file.additions !== null &&
+  isRegular(entry.oldMode) &&
+  entry.oldMode === entry.newMode;
+
+/** Both versions of each entry's file, in one read. */
+function readVersions(root: string, entries: RawEntry[]): { before: string; after: string }[] {
+  const blobs = readBlobs(root, entries.flatMap((entry) => [entry.oldBlob, entry.newBlob]));
+  return entries.map((entry) => ({ before: blobs.get(entry.oldBlob) as string, after: blobs.get(entry.newBlob) as string }));
+}
+
 /** Renamed at 100% similarity, mode unchanged. */
 const pureRename: Prover = ({ candidates }) =>
   indexesWhere(candidates, ({ entry }) => entry.status === 'R100' && entry.oldMode === entry.newMode);
@@ -46,22 +63,15 @@ const significantLines = (text: string) =>
 
 /** Only whitespace at line edges and blank lines differ, in a language where they mean nothing. */
 const whitespaceOnly: Prover = ({ root, candidates }) => {
-  const eligible = indexesWhere(
-    candidates,
-    ({ file, entry }) =>
-      (entry.status === 'M' || entry.status.startsWith('R')) &&
-      entry.oldBlob !== entry.newBlob &&
-      file.additions !== null &&
-      isRegular(entry.oldMode) &&
-      entry.oldMode === entry.newMode &&
-      [entry.oldPath ?? entry.path, entry.path].every(inWhitespaceFreeLanguage),
-  );
-  const blobs = readBlobs(root, [...eligible].flatMap((index) => [candidates[index].entry.oldBlob, candidates[index].entry.newBlob]));
+  const eligible = [
+    ...indexesWhere(candidates, (candidate) => editedText(candidate) && pathsOf(candidate.entry).every(inWhitespaceFreeLanguage)),
+  ];
+  const versions = readVersions(root, eligible.map((index) => candidates[index].entry));
   return new Set(
-    [...eligible].filter((index) => {
-      const before = significantLines(blobs.get(candidates[index].entry.oldBlob) as string);
-      const after = significantLines(blobs.get(candidates[index].entry.newBlob) as string);
-      return before.length === after.length && before.every((line, at) => line === after[at]);
+    eligible.filter((_, at) => {
+      const before = significantLines(versions[at].before);
+      const after = significantLines(versions[at].after);
+      return before.length === after.length && before.every((line, index) => line === after[index]);
     }),
   );
 };
@@ -83,7 +93,7 @@ function occurrences(text: string, block: string): number {
 const pureMove: Prover = ({ root, from, to, candidates }) => {
   const moves = listMoves(root, from, to);
   const runsOf = moves.map((file) => file.runs.map((run) => ({ sign: run.sign, text: enclose(run.blocks.flat()) })));
-  const isCode = candidates.map(({ entry }) => [entry.oldPath ?? entry.path, entry.path].every(inCodeLanguage));
+  const isCode = candidates.map(({ entry }) => pathsOf(entry).every(inCodeLanguage));
   /** Where `block` occurs among the runs of sign `sign`, one file index per occurrence. */
   const foundIn = (sign: string, block: string) =>
     runsOf.flatMap((runs, index) =>
@@ -118,25 +128,14 @@ const languageKey = (file: string) => path.extname(file).toLowerCase() || path.b
 const syntaxIdentical: Prover = ({ root, candidates }) => {
   if (!hasDifftastic()) return new Set();
   const eligible = [
-    ...indexesWhere(
-      candidates,
-      ({ file, entry }) =>
-        (entry.status === 'M' ||
-          (entry.status.startsWith('R') && languageKey(entry.oldPath ?? entry.path) === languageKey(entry.path))) &&
-        entry.oldBlob !== entry.newBlob &&
-        file.additions !== null &&
-        isRegular(entry.oldMode) &&
-        entry.oldMode === entry.newMode,
-    ),
-  ];
-  const blobs = readBlobs(root, eligible.flatMap((index) => [candidates[index].entry.oldBlob, candidates[index].entry.newBlob]));
-  // A rename is compared under its new name, so both versions parse as one language.
-  const same = sameSyntax(
-    eligible.map((index) => {
-      const { entry } = candidates[index];
-      return { name: path.basename(entry.path), before: blobs.get(entry.oldBlob) as string, after: blobs.get(entry.newBlob) as string };
+    ...indexesWhere(candidates, (candidate) => {
+      const [before, after] = pathsOf(candidate.entry);
+      return editedText(candidate) && languageKey(before) === languageKey(after);
     }),
-  );
+  ];
+  const versions = readVersions(root, eligible.map((index) => candidates[index].entry));
+  // A rename is compared under its new name, so both versions parse as one language.
+  const same = sameSyntax(eligible.map((index, at) => ({ name: path.basename(candidates[index].entry.path), ...versions[at] })));
   return new Set(eligible.filter((_, at) => same[at]));
 };
 
