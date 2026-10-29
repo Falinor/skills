@@ -39,12 +39,6 @@ results="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/review-tour-eval.XXXXXX")" && pwd -P
 # The fixture's branches (fixture.ts): review `feature` against `trunk`.
 arguments='feature base trunk'
 
-# Projects install the skill for Claude Code under .claude/skills, for Codex and OpenCode under .agents/skills.
-case "$agent" in
-  claude) skills_dir=.claude/skills ;;
-  *) skills_dir=.agents/skills ;;
-esac
-
 # Runs the agent headless from the fixture, allowed to write under $1, where the work folder lands.
 run_agent() {
   local tmp="$1"
@@ -71,9 +65,12 @@ for run in $(seq 1 "$runs"); do
   tmp="$dir/tmp"
   mkdir -p "$tmp"
   node "$here/fixture.ts" "$repo"
-  mkdir -p "$repo/$skills_dir"
-  cp -R "$skill" "$repo/$skills_dir/review-tour"
-  printf '/%s/\n' "${skills_dir%%/*}" >>"$repo/.git/info/exclude"
+  # Installed as `npx skills add` does: under .agents/skills, where Codex and
+  # OpenCode find it, and linked into .claude/skills for Claude Code.
+  mkdir -p "$repo/.agents/skills" "$repo/.claude/skills"
+  cp -R "$skill" "$repo/.agents/skills/review-tour"
+  ln -s ../../.agents/skills/review-tour "$repo/.claude/skills/review-tour"
+  printf '/.agents/\n/.claude/\n' >>"$repo/.git/info/exclude"
 
   status=0
   # REVIEW_TOUR_NO_OPEN keeps `render --open` from opening a browser tab per run.

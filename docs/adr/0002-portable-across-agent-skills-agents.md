@@ -5,3 +5,7 @@ The author works in Claude Code, but colleagues use other coding agents (Codex, 
 ## Consequences
 
 Evals run through our own harness (`evals/run.sh --agent claude|codex|opencode`) with plain-script graders, Claude being the default runner. Subagents are optional in every step, with a sequential fallback.
+
+## Amendment (2026-10-29): eval paths
+
+The decision stands; only the paths above changed when the first eval landed. Each skill has its own harness, `evals/<skill>/run.sh --agent claude|codex|opencode` (for this skill `evals/review-tour/run.sh`), not one shared `evals/run.sh`. It installs the skill as `npx skills add` does: under `.agents/skills/`, linked into `.claude/skills/` for Claude Code.

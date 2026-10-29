@@ -317,6 +317,19 @@ test('the harness runs Codex or OpenCode on request, with the skill where they f
   assert.match(openCodeArgs.at(-1) ?? '', /review-tour skill .*feature base trunk$/);
 });
 
+test('the harness installs the skill under .agents/skills, as npx skills add does, linked into .claude/skills for Claude Code', () => {
+  fakeAgent('claude', '.claude/skills', [soundPlan]);
+
+  const result = runHarness(['--runs', '1']);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const shop = path.join(/^logs: (.*)$/m.exec(result.stdout)?.[1] ?? '', 'run-1', 'shop');
+  assert.ok(fs.existsSync(path.join(shop, '.agents/skills/review-tour/SKILL.md')));
+  const linked = path.join(shop, '.claude/skills/review-tour');
+  assert.ok(fs.lstatSync(linked).isSymbolicLink());
+  assert.equal(fs.realpathSync(linked), fs.realpathSync(path.join(shop, '.agents/skills/review-tour')));
+});
+
 test('the harness keeps every run from opening a browser tab', () => {
   fakeAgent('claude', '.claude/skills', [soundPlan, soundPlan]);
   const openers = [sandbox.fake('open'), sandbox.fake('xdg-open')];
