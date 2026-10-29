@@ -3,6 +3,7 @@ import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { describeFollowUp, followUpRange } from './follow-up.ts';
 import { capturePatch, commitOf, git, listChangedFiles, tryGit } from './git.ts';
+import { proveFiles } from './proofs.ts';
 import { followsPrTemplate, openPullRequest, pullRequestSelector } from './pull-request.ts';
 import { workFolderFiles, workFolderFor, writeCapture, writePullRequestText, type Change } from './work-folder.ts';
 
@@ -58,7 +59,7 @@ export function prepare(args: string[]): void {
     base,
     mergeBase,
     head,
-    files: listChangedFiles(root, from, head),
+    files: proveFiles(root, from, head, listChangedFiles(root, from, head)),
     ...(pullRequest && { pullRequest: { number: pullRequest.number, url: pullRequest.url } }),
     ...(followUp && { followUp }),
   };

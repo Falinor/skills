@@ -43,25 +43,70 @@ function diff(cwd: string, args: string[]): string {
   ]);
 }
 
+/**
+ * Each blob's content, decoded byte for byte (latin1) so that two different
+ * blobs never read the same, whatever their encoding.
+ */
+export function readBlobs(cwd: string, ids: string[]): Map<string, string> {
+  const unique = [...new Set(ids)];
+  const blobs = new Map<string, string>();
+  if (unique.length === 0) return blobs;
+  const result = spawnSync('git', ['cat-file', '--batch'], { cwd, input: `${unique.join('\n')}\n`, maxBuffer: 1024 ** 3 });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new UserError(`git cat-file --batch failed:\n${result.stderr.toString().trim()}`);
+  // Each blob comes as `<id> blob <size>\n<content>\n`.
+  let offset = 0;
+  for (const id of unique) {
+    const headerEnd = result.stdout.indexOf(10, offset);
+    const size = Number(result.stdout.toString('latin1', offset, headerEnd).split(' ')[2]);
+    blobs.set(id, result.stdout.toString('latin1', headerEnd + 1, headerEnd + 1 + size));
+    offset = headerEnd + 1 + size + 1;
+  }
+  return blobs;
+}
+
 /** The full patch from `from` to `to`, one `diff --git` section per changed file. */
 export function capturePatch(cwd: string, from: string, to: string): string {
   return diff(cwd, [from, to]);
 }
 
+/** git's raw listing of one changed file: modes, blob ids and status with its score. */
+export type RawEntry = {
+  oldMode: string;
+  newMode: string;
+  /** All zeros when the file did not exist on that side. */
+  oldBlob: string;
+  newBlob: string;
+  /** The status letter and, for renames and copies, the similarity score: `M`, `R100`, `R087`. */
+  status: string;
+  oldPath?: string;
+  path: string;
+};
+
+/** Every changed file's raw entry, in patch order. */
+export function listRawEntries(cwd: string, from: string, to: string): RawEntry[] {
+  const raw = diff(cwd, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
+  const entries: RawEntry[] = [];
+  for (let i = 0; i < raw.length && raw[i]; ) {
+    const [oldMode, newMode, oldBlob, newBlob, status] = raw[i++].slice(1).split(' ');
+    const renamed = status[0] === 'R' || status[0] === 'C';
+    const oldPath = renamed ? raw[i++] : undefined;
+    entries.push({ oldMode, newMode, oldBlob, newBlob, status, ...(oldPath && { oldPath }), path: raw[i++] });
+  }
+  return entries;
+}
+
 /** Every changed file with its status and line counts, in patch order. */
 export function listChangedFiles(cwd: string, from: string, to: string): ChangedFile[] {
-  const raw = diff(cwd, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
   const numstat = diff(cwd, ['--numstat', '-z', from, to]).split('\0');
 
-  const files: ChangedFile[] = [];
-  for (let i = 0; i < raw.length && raw[i]; ) {
-    const status = raw[i++].split(' ')[4][0];
-    const file: ChangedFile =
-      status === 'R' || status === 'C'
-        ? { oldPath: raw[i++], path: raw[i++], status, additions: null, deletions: null }
-        : { path: raw[i++], status, additions: null, deletions: null };
-    files.push(file);
-  }
+  const files: ChangedFile[] = listRawEntries(cwd, from, to).map(({ oldPath, path, status }) => ({
+    ...(oldPath && { oldPath }),
+    path,
+    status: status[0],
+    additions: null,
+    deletions: null,
+  }));
 
   let index = 0;
   for (let i = 0; i < numstat.length && numstat[i]; index++) {
