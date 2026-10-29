@@ -234,3 +234,25 @@ test('ticks the proven mechanical batch: proven files of the mechanical tier, ne
   assert.match(result.stdout, /^Ticked as Viewed on pull request #7: 1 file\n {2}new\.txt$/m);
   assert.match(result.stdout, /^Declared generated, not proven, so left out of the batch: 1 file\n {2}dist\/app\.js$/m);
 });
+
+test('render offers the proven mechanical batch for a pull request tour', () => {
+  const tour = pullRequestTour();
+
+  const result = sandbox.run(['render', tour.folder], { cwd: tour.clone.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /\n## Viewed on GitHub\n\nTick the proven mechanical file \(step 4\) as Viewed on pull request #7 in one batch\?\n$/,
+  );
+});
+
+test('render offers no ticking for a local-branch tour', () => {
+  const { folder, repo } = prepareChange(sandbox, { trunk: { 'old.txt': 'kept\n' }, feature: {} }, { 'old.txt': 'new.txt' });
+  writePlan(folder, { steps: [{ title: 'Renamed', tier: 'mechanical', files: ['new.txt'], explanation: '' }] });
+
+  const result = sandbox.run(['render', folder], { cwd: repo.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /Viewed/);
+});

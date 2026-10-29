@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { graphql } from './gh.ts';
+import { mechanicalBatch } from './mechanical-batch.ts';
 import { cutPatch } from './patch.ts';
 import { validatePlan, type TourPlan } from './plan.ts';
 import { readPlan } from './render.ts';
@@ -61,18 +62,6 @@ function readViewedStates(change: Change) {
 
 const count = (files: string[]) => (files.length === 1 ? '1 file' : `${files.length} files`);
 const listed = (files: string[]) => files.map((file) => `  ${file}`);
-
-/**
- * The proven mechanical batch: the files of the mechanical tier that carry a
- * mechanical proof. The tier's declared generated files are not proven, so
- * they stay out (`declared`); ticking their step by number ticks them.
- */
-export function mechanicalBatch(plan: TourPlan, change: Change): { proven: string[]; declared: string[] } {
-  const byPath = new Map(change.files.map((file) => [file.path, file]));
-  const isProven = (file: string) => (byPath.get(file)?.proofs?.length ?? 0) > 0;
-  const files = plan.steps.filter((step) => step.tier === 'mechanical').flatMap((step) => step.files);
-  return { proven: files.filter(isProven), declared: files.filter((file) => !isProven(file)) };
-}
 
 /** Ticks the chosen files as Viewed on the pull request and prints what it ticked. */
 export function viewed(args: string[]): void {
