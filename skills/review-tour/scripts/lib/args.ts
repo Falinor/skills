@@ -6,11 +6,11 @@ export function parseCommandArgs<T extends ParseArgsOptionsConfig>(
   args: string[],
   options: T,
   usage: string,
-  positionals: number,
+  positionalCount: number,
 ) {
   try {
     const parsed = parseArgs({ args, options, allowPositionals: true, strict: true });
-    if (parsed.positionals.length !== positionals) throw new UserError(usage);
+    if (parsed.positionals.length !== positionalCount) throw new UserError(usage);
     return parsed;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? '';
