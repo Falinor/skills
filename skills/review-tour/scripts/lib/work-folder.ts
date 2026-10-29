@@ -62,6 +62,7 @@ export type FollowUp = {
 export const workFolderFiles = {
   change: 'change.json',
   patch: 'change.patch',
+  toRead: 'to-read.patch',
   plan: 'plan.json',
   page: 'tour.html',
   pullRequest: 'pull-request.json',

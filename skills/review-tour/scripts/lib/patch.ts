@@ -15,12 +15,17 @@ export type Hunk = { header: string; lines: DiffLine[] };
 
 export type FileDiff = { file: ChangedFile; hunks: Hunk[]; binary: boolean };
 
-/** One diff per changed file, keyed by path. */
-export function cutPatch(patch: string, files: ChangedFile[]): Map<string, FileDiff> {
+/** The patch's `diff --git` sections, one per changed file, in the order of change.json's files. */
+export function patchSections(patch: string): string[] {
   // Hunk lines always start with a prefix character, so `diff --git ` at the
   // start of a line can only open a file section. Sections come in the same
   // order as change.json's files: both come from identical diff flags.
-  const sections = patch.split(/^(?=diff --git )/m).filter((section) => section.startsWith('diff --git '));
+  return patch.split(/^(?=diff --git )/m).filter((section) => section.startsWith('diff --git '));
+}
+
+/** One diff per changed file, keyed by path. */
+export function cutPatch(patch: string, files: ChangedFile[]): Map<string, FileDiff> {
+  const sections = patchSections(patch);
   if (sections.length !== files.length) {
     throw new UserError('change.patch does not match change.json; run prepare again.');
   }
