@@ -21,12 +21,13 @@ export type ChangedFile = {
 };
 
 /** Tool evidence that a file's change preserves behaviour. */
-export type Proof = 'pure-move' | 'pure-rename' | 'whitespace-only';
+export type Proof = 'pure-move' | 'pure-rename' | 'whitespace-only' | 'syntax-identical';
 
 export const proofLabels: Record<Proof, string> = {
   'pure-move': 'pure move',
   'pure-rename': 'pure rename',
   'whitespace-only': 'whitespace only',
+  'syntax-identical': 'syntax-identical',
 };
 
 /** A file may sit in the mechanical tier only with a proof, or when the base declares it generated. */

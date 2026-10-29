@@ -49,10 +49,17 @@ export function makeSandbox(): Sandbox {
   const gitConfig = path.join(root, 'gitconfig');
   fs.writeFileSync(gitConfig, '');
 
+  // An installed difftastic would add proofs depending on the machine: the CLI
+  // never sees it, unless a test puts a fake in bin/ or passes the real one's PATH.
+  const pathWithoutDifft = (process.env.PATH ?? '')
+    .split(path.delimiter)
+    .filter((dir) => !fs.existsSync(path.join(dir, 'difft')))
+    .join(path.delimiter);
+
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     TMPDIR: tmp,
-    PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`,
+    PATH: `${bin}${path.delimiter}${pathWithoutDifft}`,
     GIT_CONFIG_GLOBAL: gitConfig,
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_AUTHOR_NAME: 'Test',

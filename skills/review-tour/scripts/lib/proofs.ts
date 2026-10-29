@@ -2,6 +2,7 @@
 // change preserves behaviour. `prepare` computes them before the agent reads
 // anything, so proven files never reach the agent.
 import path from 'node:path';
+import { hasDifftastic, sameSyntax } from './difftastic.ts';
 import { listMoves, listRawEntries, readBlobs, type FileMoves, type RawEntry } from './git.ts';
 import type { ChangedFile, Proof } from './work-folder.ts';
 
@@ -87,6 +88,35 @@ const pureMove: Prover = ({ root, from, to, candidates }) => {
   );
 };
 
+/** The name difftastic guesses a language from: the extension, else the whole file name (`Makefile`). */
+const languageKey = (file: string) => path.extname(file).toLowerCase() || path.basename(file);
+
+/** difftastic finds the syntax tree unchanged: a reflow or re-indentation in any language it parses. */
+const syntaxIdentical: Prover = ({ root, candidates }) => {
+  if (!hasDifftastic()) return new Set();
+  const eligible = [
+    ...indexesWhere(
+      candidates,
+      ({ file, entry }) =>
+        (entry.status === 'M' ||
+          (entry.status.startsWith('R') && languageKey(entry.oldPath ?? entry.path) === languageKey(entry.path))) &&
+        entry.oldBlob !== entry.newBlob &&
+        file.additions !== null &&
+        isRegular(entry.oldMode) &&
+        entry.oldMode === entry.newMode,
+    ),
+  ];
+  const blobs = readBlobs(root, eligible.flatMap((index) => [candidates[index].entry.oldBlob, candidates[index].entry.newBlob]));
+  // A rename is compared under its new name, so both versions parse as one language.
+  const same = sameSyntax(
+    eligible.map((index) => {
+      const { entry } = candidates[index];
+      return { name: path.basename(entry.path), before: blobs.get(entry.oldBlob) as string, after: blobs.get(entry.newBlob) as string };
+    }),
+  );
+  return new Set(eligible.filter((_, at) => same[at]));
+};
+
 function indexesWhere(candidates: Candidate[], holds: (candidate: Candidate, index: number) => boolean): Set<number> {
   return new Set(candidates.flatMap((candidate, index) => (holds(candidate, index) ? [index] : [])));
 }
@@ -95,6 +125,7 @@ const provers: [Proof, Prover][] = [
   ['pure-move', pureMove],
   ['pure-rename', pureRename],
   ['whitespace-only', whitespaceOnly],
+  ['syntax-identical', syntaxIdentical],
 ];
 
 /** `files` with the proofs each one carries; `files` must list the range `from`..`to` in patch order. */
