@@ -1,6 +1,8 @@
 // Builds the tour page as one self-contained HTML file. Every piece of text
 // from the tour plan or the patch goes through `escape`, or through the
-// escaping Markdown subset for prose.
+// escaping Markdown subset for prose. Its one script only navigates; the
+// Content-Security-Policy allows that script by hash and nothing else.
+import { createHash } from 'node:crypto';
 import { describeFollowUp } from './follow-up.ts';
 import { inlineMarkdown, markdown } from './markdown.ts';
 import type { FileDiff, Hunk } from './patch.ts';
@@ -44,7 +46,42 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mechanical caption { text-align: left; font-weight: 600; }
 .mechanical th, .mechanical td { border-bottom: 1px solid #ddd; padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; }
 .mechanical .count { text-align: right; }
+.tier:last-child .step:last-child { min-height: calc(100vh - 2rem); }
 `;
+
+// Navigation: j and k move to the next and previous step from the step being
+// read (the last one whose top reached the top of the viewport), through the
+// `#step-N` link; the sidebar marks that step and counts it. The last step is
+// tall enough to reach the top. It never writes markup.
+const script = `addEventListener('DOMContentLoaded', () => {
+  const steps = [...document.querySelectorAll('main .step')];
+  const links = [...document.querySelectorAll('#sidebar a[href^="#step-"]')];
+  const count = document.getElementById('progress-count');
+  const reading = () => steps.findLastIndex((step) => step.getBoundingClientRect().top <= 32);
+  const showProgress = () => {
+    const index = reading();
+    links.forEach((link, i) => (i === index ? link.setAttribute('aria-current', 'step') : link.removeAttribute('aria-current')));
+    count.textContent = String(index + 1);
+  };
+  addEventListener('scroll', showProgress, { passive: true });
+  addEventListener('hashchange', showProgress);
+  showProgress();
+  const go = (index) => {
+    const step = steps[index];
+    if (!step) return;
+    if (location.hash === '#' + step.id) step.scrollIntoView();
+    else location.hash = step.id;
+  };
+  addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (event.key === 'j') go(reading() + 1);
+    else if (event.key === 'k') go(reading() - 1);
+    else return;
+    event.preventDefault();
+  });
+});`;
+const scriptHash = createHash('sha256').update(script).digest('base64');
 
 export const doors = { 'one-way': 'One-way door', 'two-way': 'Two-way door' } as const;
 
@@ -181,6 +218,28 @@ function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>): st
   );
 }
 
+/** The sidebar: every step, grouped by tier, as a link to its `#step-N`. */
+function renderSidebar(plan: TourPlan): string {
+  const groups = tiers.flatMap((tier) => {
+    const links = plan.steps.flatMap((step, index) =>
+      step.tier === tier
+        ? [`<li><a href="#step-${index + 1}"><span class="number">${index + 1}</span> ${escape(step.title)}</a></li>`]
+        : [],
+    );
+    if (links.length === 0) return [];
+    return [
+      `<p class="nav-tier" id="nav-tier-${tier}">${tierLabels[tier]}</p>` +
+        `<ol class="nav-steps" aria-labelledby="nav-tier-${tier}">${links.join('')}</ol>`,
+    ];
+  });
+  const total = plan.steps.length;
+  return (
+    `<nav class="sidebar" id="sidebar" aria-label="Steps">` +
+    `<p class="progress"><span id="progress-count">0</span> of ${total} ${total === 1 ? 'step' : 'steps'}</p>` +
+    `${groups.join('')}</nav>`
+  );
+}
+
 export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, FileDiff>): string {
   // Validation keeps steps in tier order, so grouping keeps their numbers ascending.
   const steps = tiers.flatMap((tier) => {
@@ -196,11 +255,14 @@ export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, Fi
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${scriptHash}'">
 <title>Tour of ${escape(change.target)}</title>
 <style>${styles}</style>
+<script>${script}</script>
 </head>
 <body>
+${renderSidebar(plan)}
+<div class="content">
 <header>
 <h1>Tour of <code>${escape(change.target)}</code></h1>
 <p>${escape(change.repository)} · against <code>${escape(change.base)}</code> · head <code>${escape(change.head.slice(0, 12))}</code></p>
@@ -209,6 +271,7 @@ ${change.followUp ? `<p class="follow-up">${escape(describeFollowUp(change.follo
 ${renderIntent(plan.intent)}
 ${steps.join('\n')}
 </main>
+</div>
 </body>
 </html>
 `;
