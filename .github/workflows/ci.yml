@@ -16,6 +16,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # For the syntax-identical proof tests; the tool itself never installs it.
+      - name: Install difftastic
+        env:
+          DIFFT_VERSION: 0.71.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/difft"
+          curl -fsSL "https://github.com/Wilfred/difftastic/releases/download/${DIFFT_VERSION}/difft-${DIFFT_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/difft" difft
+          echo "$RUNNER_TEMP/difft" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/difft/difft" --version
       - run: npm run test:cli
       - run: npx playwright install --with-deps --only-shell chromium
       - run: npm run test:page
