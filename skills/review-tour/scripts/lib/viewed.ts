@@ -64,6 +64,34 @@ function readViewedStates(change: Change) {
 const count = (files: string[]) => (files.length === 1 ? '1 file' : `${files.length} files`);
 const listed = (files: string[]) => files.map((file) => `  ${printablePath(file)}`);
 
+/** Files per mutation, so a failure leaves at most this many in doubt. */
+const batchSize = 25;
+
+/** Ticks `files` batch by batch; when GitHub fails, prints what it ticked before and stops, naming the rest. */
+function tick(host: string, id: string, files: string[], number: number | undefined): void {
+  for (let start = 0; start < files.length; start += batchSize) {
+    const batch = files.slice(start, start + batchSize);
+    const declarations = batch.map((_, index) => `, $p${index}: String!`).join('');
+    const marks = batch
+      .map((_, index) => `p${index}: markFileAsViewed(input: { pullRequestId: $pr, path: $p${index} }) { clientMutationId }`)
+      .join('\n  ');
+    try {
+      graphql(host, `mutation($pr: ID!${declarations}) {\n  ${marks}\n}`, {
+        pr: id,
+        ...Object.fromEntries(batch.map((file, index) => [`p${index}`, file])),
+      });
+    } catch (error) {
+      if (!(error instanceof UserError)) throw error;
+      const ticked = files.slice(0, start);
+      if (ticked.length > 0) {
+        console.log([`Ticked as Viewed on pull request #${number} before GitHub failed: ${count(ticked)}`, ...listed(ticked)].join('\n'));
+      }
+      const left = files.slice(start);
+      throw new UserError([error.message, `GitHub failed while ticking, so these may not be ticked: ${count(left)}`, ...listed(left)].join('\n'));
+    }
+  }
+}
+
 /** Ticks the chosen files as Viewed on the pull request and prints what it ticked. */
 export function viewed(args: string[]): void {
   const { positionals } = parseCommandArgs(args, {}, usage, 2);
@@ -83,18 +111,8 @@ export function viewed(args: string[]): void {
   const toTick = listedPaths.filter((file) => states.get(file) !== 'VIEWED');
   const alreadyViewed = listedPaths.filter((file) => states.get(file) === 'VIEWED');
 
-  if (toTick.length > 0) {
-    const declarations = toTick.map((_, index) => `, $p${index}: String!`).join('');
-    const marks = toTick
-      .map((_, index) => `p${index}: markFileAsViewed(input: { pullRequestId: $pr, path: $p${index} }) { clientMutationId }`)
-      .join('\n  ');
-    graphql(host, `mutation($pr: ID!${declarations}) {\n  ${marks}\n}`, {
-      pr: id,
-      ...Object.fromEntries(toTick.map((file, index) => [`p${index}`, file])),
-    });
-  }
-
   const number = change.pullRequest?.number;
+  tick(host, id, toTick, number);
   console.log(
     [
       ...(toTick.length > 0

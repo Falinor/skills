@@ -279,3 +279,32 @@ test('quotes a file name that would otherwise forge a line of the report', () =>
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, `Ticked as Viewed on pull request #7: 1 file\n  ${JSON.stringify(forged)}\n`);
 });
+
+test('ticks in batches and, when GitHub fails mid-way, reports what it ticked before failing', () => {
+  const names = Array.from({ length: 30 }, (_, index) => `f${String(index).padStart(2, '0')}.txt`);
+  const world = pullRequestRepo(sandbox, { 'a.txt': 'one\n' });
+  world.author.write(Object.fromEntries(names.map((name) => [name, `${name}\n`])));
+  world.author.commit('feature');
+  const view = world.publish();
+  fakeGh(sandbox, [{ args: ['pr', 'view'], stdout: view }]);
+  assert.equal(sandbox.run(['prepare', '7'], { cwd: world.clone.dir }).status, 0);
+  const folder = path.join(sandbox.tmp, 'review-tour', 'project-PR-7');
+  writePlan(folder, { steps: [{ title: 'All', files: names, explanation: '' }] });
+  const gh = github(
+    view.headRefOid,
+    Object.fromEntries(names.map((name) => [name, 'UNVIEWED' as const])),
+    [{ args: ['api', 'graphql'], includes: 'p0=f25.txt', status: 1, stderr: 'API rate limit exceeded' }],
+  );
+
+  const result = sandbox.run(['viewed', folder, '1'], { cwd: world.clone.dir });
+
+  assert.equal(result.status, 1);
+  assert.equal(gh.log().filter(isMarking).length, 2, 'stops at the failing batch');
+  assert.deepEqual(ticked(gh.log()).slice(0, 25), names.slice(0, 25));
+  assert.equal(
+    result.stdout,
+    `Ticked as Viewed on pull request #7 before GitHub failed: 25 files\n${names.slice(0, 25).map((name) => `  ${name}\n`).join('')}`,
+  );
+  assert.match(result.stderr, /API rate limit exceeded/);
+  assert.match(result.stderr, new RegExp(`may not be ticked: 5 files\\n${names.slice(25).map((name) => ` {2}${name.replace('.', '\\.')}`).join('\\n')}`));
+});
