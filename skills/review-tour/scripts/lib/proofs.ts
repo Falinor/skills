@@ -2,19 +2,22 @@
 // change preserves behaviour. `prepare` computes them before the agent reads
 // anything, so proven files never reach the agent.
 import path from 'node:path';
-import { listRawEntries, readBlobs, type RawEntry } from './git.ts';
+import { listMoves, listRawEntries, readBlobs, type FileMoves, type RawEntry } from './git.ts';
 import type { ChangedFile, Proof } from './work-folder.ts';
 
 /** One changed file as the provers see it. */
 type Candidate = { file: ChangedFile; entry: RawEntry };
 
+/** The range under proof and its changed files, in patch order. */
+type Range = { root: string; from: string; to: string; candidates: Candidate[] };
+
 /** The indexes of the candidates a proof holds for. */
-type Prover = (root: string, candidates: Candidate[]) => Set<number>;
+type Prover = (range: Range) => Set<number>;
 
 const isRegular = (mode: string) => mode === '100644' || mode === '100755';
 
 /** Renamed at 100% similarity, mode unchanged. */
-const pureRename: Prover = (_root, candidates) =>
+const pureRename: Prover = ({ candidates }) =>
   indexesWhere(candidates, ({ entry }) => entry.status === 'R100' && entry.oldMode === entry.newMode);
 
 // Languages where whitespace at the edges of a line, and blank lines, carry
@@ -34,7 +37,7 @@ const significantLines = (text: string) =>
     .filter((line) => line !== '');
 
 /** Only whitespace at line edges and blank lines differ, in a language where they mean nothing. */
-const whitespaceOnly: Prover = (root, candidates) => {
+const whitespaceOnly: Prover = ({ root, candidates }) => {
   const eligible = indexesWhere(
     candidates,
     ({ file, entry }) =>
@@ -55,11 +58,41 @@ const whitespaceOnly: Prover = (root, candidates) => {
   );
 };
 
-function indexesWhere(candidates: Candidate[], holds: (candidate: Candidate) => boolean): Set<number> {
-  return new Set(candidates.flatMap((candidate, index) => (holds(candidate) ? [index] : [])));
+// A moved block must leave one file and land in a different one. A block
+// that also lands in its own file may be a reorder, which changes behaviour,
+// so it proves nothing, even when the same lines also move elsewhere.
+const enclose = (lines: string[]) => `\n${lines.join('\n')}\n`;
+
+/** Every changed line moved, each moved block found in another file's opposite runs and in none of its own. */
+const pureMove: Prover = ({ root, from, to, candidates }) => {
+  const moves = listMoves(root, from, to);
+  const runsOf = moves.map((file) => file.runs.map((run) => ({ sign: run.sign, text: enclose(run.blocks.flat()) })));
+  const landsIn = (index: number, sign: string, block: string) =>
+    runsOf[index].some((run) => run.sign !== sign && run.text.includes(block));
+  const movedOnly = ({ file, entry }: Candidate, { unmoved, runs }: FileMoves) =>
+    unmoved === 0 &&
+    runs.length > 0 &&
+    file.additions !== null &&
+    (entry.oldMode === entry.newMode || entry.status === 'A' || entry.status === 'D');
+  return indexesWhere(
+    candidates,
+    (candidate, index) =>
+      movedOnly(candidate, moves[index]) &&
+      moves[index].runs.every(({ sign, blocks }) =>
+        blocks.every((block) => {
+          const text = enclose(block);
+          return !landsIn(index, sign, text) && moves.some((_, other) => other !== index && landsIn(other, sign, text));
+        }),
+      ),
+  );
+};
+
+function indexesWhere(candidates: Candidate[], holds: (candidate: Candidate, index: number) => boolean): Set<number> {
+  return new Set(candidates.flatMap((candidate, index) => (holds(candidate, index) ? [index] : [])));
 }
 
 const provers: [Proof, Prover][] = [
+  ['pure-move', pureMove],
   ['pure-rename', pureRename],
   ['whitespace-only', whitespaceOnly],
 ];
@@ -68,7 +101,7 @@ const provers: [Proof, Prover][] = [
 export function proveFiles(root: string, from: string, to: string, files: ChangedFile[]): ChangedFile[] {
   const entries = listRawEntries(root, from, to);
   const candidates = files.map((file, index) => ({ file, entry: entries[index] }));
-  const found = provers.map(([proof, prove]) => [proof, prove(root, candidates)] as const);
+  const found = provers.map(([proof, prove]) => [proof, prove({ root, from, to, candidates })] as const);
   return files.map((file, index) => {
     const proofs = found.filter(([, proven]) => proven.has(index)).map(([proof]) => proof);
     return proofs.length > 0 ? { ...file, proofs } : file;

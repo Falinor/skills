@@ -73,3 +73,54 @@ test('never proves whitespace changes where whitespace has meaning', () => {
   const files = filesOf(folder);
   for (const file of ['job.py', 'config.yml', 'Makefile']) assert.equal(files.get(file)?.proofs, undefined, file);
 });
+
+test('proves code moved verbatim from one file to another', () => {
+  const { folder } = prepareChange(sandbox, {
+    trunk: { 'src/a.ts': body('alpha') + body('beta'), 'src/b.ts': body('gamma') },
+    feature: { 'src/a.ts': body('alpha'), 'src/b.ts': body('gamma') + body('beta') },
+  });
+
+  const files = filesOf(folder);
+  assert.deepEqual(files.get('src/a.ts')?.proofs, ['pure-move']);
+  assert.deepEqual(files.get('src/b.ts')?.proofs, ['pure-move']);
+});
+
+test('never proves a move that lands with an edit', () => {
+  const { folder } = prepareChange(sandbox, {
+    trunk: { 'a.ts': body('alpha') + body('beta'), 'b.ts': body('gamma') },
+    feature: { 'a.ts': body('alpha'), 'b.ts': `${body('gamma')}${body('beta')}beta(1);\n` },
+  });
+
+  const files = filesOf(folder);
+  assert.deepEqual(files.get('a.ts')?.proofs, ['pure-move']);
+  assert.equal(files.get('b.ts')?.proofs, undefined);
+});
+
+const statements = {
+  open: 'openTheConnectionToTheDatabase();\n',
+  serve: 'serveEveryIncomingRequestUntilStopped();\n',
+  close: 'closeTheConnectionToTheDatabase();\n',
+};
+
+test('never proves statements reordered within one file', () => {
+  const { open, serve, close } = statements;
+  const { folder } = prepareChange(sandbox, {
+    trunk: { 'run.ts': open + serve + close },
+    feature: { 'run.ts': close + open + serve },
+  });
+
+  assert.equal(filesOf(folder).get('run.ts')?.proofs, undefined);
+});
+
+test('never proves a reorder hidden by the same lines moving between two other files', () => {
+  const { open, serve, close } = statements;
+  const { folder } = prepareChange(sandbox, {
+    trunk: { 'run.ts': open + serve + close, 'from.ts': close },
+    feature: { 'run.ts': close + open + serve, 'from.ts': '', 'to.ts': close },
+  });
+
+  const files = filesOf(folder);
+  assert.equal(files.get('run.ts')?.proofs, undefined);
+  assert.deepEqual(files.get('from.ts')?.proofs, ['pure-move']);
+  assert.deepEqual(files.get('to.ts')?.proofs, ['pure-move']);
+});

@@ -35,9 +35,10 @@ export function commitOf(cwd: string, ref: string): string | undefined {
 // tools, prefixes, colours, textconv, relative paths). Every diff of one
 // change uses the same flags, so listings and the patch list files in the
 // same order.
-function diff(cwd: string, args: string[]): string {
+function diff(cwd: string, args: string[], config: string[] = []): string {
   return git(cwd, [
     '-c', 'core.quotePath=false',
+    ...config,
     'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--default-prefix', '--no-relative', '-M',
     ...args,
   ]);
@@ -63,6 +64,64 @@ export function readBlobs(cwd: string, ids: string[]): Map<string, string> {
     offset = headerEnd + 1 + size + 1;
   }
   return blobs;
+}
+
+/** A file's changed lines as git's moved-line detection sees them. */
+export type FileMoves = {
+  /** Changed lines git does not paint as moved. */
+  unmoved: number;
+  /** Maximal stretches of adjacent moved lines of one sign, each split into git's moved blocks. */
+  runs: { sign: '+' | '-'; blocks: string[][] }[];
+};
+
+// Moved lines exist only as colours: pin every slot so each class has its own
+// code. zebra alternates two colours between adjacent blocks, so a change of
+// colour marks git's block boundary.
+const movedCodes = { '-': ['35', '34'], '+': ['36', '33'] } as const;
+const moveColours = [
+  'oldMoved=magenta', 'oldMovedAlternative=blue', 'newMoved=cyan', 'newMovedAlternative=yellow',
+  'old=red', 'new=green', 'meta=normal', 'frag=normal', 'func=normal', 'context=normal', 'whitespace=normal',
+].flatMap((setting) => ['-c', `color.diff.${setting}`]);
+
+/** Every changed file's moved lines, in patch order. Moves are detected across the whole range at once. */
+export function listMoves(cwd: string, from: string, to: string): FileMoves[] {
+  const patch = diff(
+    cwd,
+    ['--color=always', '--color-moved=zebra', '--color-moved-ws=no', '--ws-error-highlight=none', from, to],
+    moveColours,
+  );
+  const files: FileMoves[] = [];
+  let file: FileMoves | undefined;
+  let inHunk = false;
+  let previous: { sign: string; code: string } | undefined;
+  for (const line of patch.split('\n')) {
+    const code = /^\x1b\[([0-9;]*)m/.exec(line)?.[1] ?? '';
+    const text = line.replace(/\x1b\[[0-9;]*m/g, '');
+    const sign = text[0];
+    if (text.startsWith('diff --git ')) {
+      file = { unmoved: 0, runs: [] };
+      files.push(file);
+      inHunk = false;
+      previous = undefined;
+    } else if (text.startsWith('@@')) {
+      inHunk = true;
+      previous = undefined;
+    } else if (file && inHunk && (sign === '+' || sign === '-')) {
+      if (!(movedCodes[sign] as readonly string[]).includes(code)) {
+        file.unmoved++;
+        previous = undefined;
+        continue;
+      }
+      const run = file.runs.at(-1);
+      if (previous?.sign !== sign || !run) file.runs.push({ sign, blocks: [[]] });
+      else if (previous.code !== code) run.blocks.push([]);
+      file.runs.at(-1)?.blocks.at(-1)?.push(text.slice(1));
+      previous = { sign, code };
+    } else {
+      previous = undefined;
+    }
+  }
+  return files;
 }
 
 /** The full patch from `from` to `to`, one `diff --git` section per changed file. */
