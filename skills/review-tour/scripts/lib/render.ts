@@ -25,7 +25,7 @@ function openPage(page: string): void {
   if (result.error || result.status !== 0) console.log('Could not open a browser; open the page above by hand.');
 }
 
-function readPlan(folder: string): unknown {
+export function readPlan(folder: string): unknown {
   const file = path.join(folder, workFolderFiles.plan);
   if (!fs.existsSync(file)) throw new UserError(`no tour plan at ${file}; write it first.`);
   try {
