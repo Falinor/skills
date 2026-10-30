@@ -16,6 +16,8 @@ After the author addresses feedback, `since <sha>` (the earlier tour's head) giv
 
 For a pull request, say "done 3" or "done 1–4" in the chat when you finish steps, and their files are ticked as Viewed on GitHub. Once the tour is built, the skill offers to tick the proven mechanical files in one batch. It skips files you already viewed, never unticks anything, and refuses when the pull request has moved since the tour was built, suggesting a follow-up tour instead.
 
+Ask the chat to comment on a file and line, and the comment goes into your pending review on the pull request, which only you can see until you submit it yourself on GitHub. The skill never submits, approves or requests changes, and refuses a stale tour the same way.
+
 ### Install
 
 ```sh
