@@ -137,3 +137,43 @@ test('never opens the page when REVIEW_TOUR_NO_OPEN is set, as in eval runs', ()
   assert.deepEqual(openers.flatMap((opener) => opener.log()), []);
   assert.match(result.stdout, /^Page: /m);
 });
+
+test('highlights each diff line from its whole file, so a comment opened above the hunk colours it', () => {
+  const above = Array.from({ length: 6 }, (_, index) => `   note ${index}`).join('\n');
+  const { folder, repo } = prepareChange(sandbox, {
+    trunk: { 'a.ts': `/*\n${above}\n   old note\n*/\nconst x = 1;\n` },
+    feature: { 'a.ts': `/*\n${above}\n   new note\n*/\nconst x = 2;\n` },
+  });
+  writePlan(folder, { steps: [{ title: 'A', tier: 'core-logic', files: ['a.ts'], explanation: '' }] });
+
+  const result = sandbox.run(['render', folder], { cwd: repo.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  const html = fs.readFileSync(path.join(folder, 'tour.html'), 'utf8');
+  assert.ok(html.includes('<td class="code">-<span class="hljs-comment">   old note</span></td>'), html);
+  assert.ok(html.includes('<td class="code">+<span class="hljs-comment">   new note</span></td>'));
+  assert.ok(html.includes('+<span class="hljs-keyword">const</span> x = <span class="hljs-number">2</span>;'));
+  assert.match(stepText(html, 1), /-   old note[\s\S]*\+   new note/);
+});
+
+test('shows plain escaped code for a language it does not know, or without captured contents', () => {
+  const { folder, repo } = prepareChange(sandbox, {
+    trunk: { 'a.unknown': 'one\n', 'b.ts': 'let a = 1;\n' },
+    feature: { 'a.unknown': 'one\n<b>two</b>\n', 'b.ts': 'let a = 2;\n' },
+  });
+  writePlan(folder, { steps: [{ title: 'A', tier: 'core-logic', files: ['a.unknown', 'b.ts'], explanation: '' }] });
+  // A work folder captured before prepare kept the file contents.
+  fs.rmSync(path.join(folder, 'sources.json'));
+  const before = sandbox.run(['render', folder], { cwd: repo.dir });
+  assert.equal(before.status, 0, before.stderr);
+  assert.ok(fs.readFileSync(path.join(folder, 'tour.html'), 'utf8').includes('<td class="code">+let a = 2;</td>'));
+
+  assert.equal(sandbox.run(['prepare', 'feature', '--base', 'trunk'], { cwd: repo.dir }).status, 0);
+  writePlan(folder, { steps: [{ title: 'A', tier: 'core-logic', files: ['a.unknown', 'b.ts'], explanation: '' }] });
+  const result = sandbox.run(['render', folder], { cwd: repo.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  const html = fs.readFileSync(path.join(folder, 'tour.html'), 'utf8');
+  assert.ok(html.includes('<td class="code">+&lt;b&gt;two&lt;/b&gt;</td>'));
+  assert.ok(html.includes('+<span class="hljs-keyword">let</span> a = <span class="hljs-number">2</span>;'));
+});

@@ -9,6 +9,17 @@ let pageUrl: string;
 
 const lines = (prefix: string) => Array.from({ length: 80 }, (_, index) => `${prefix} ${index}`).join('\n');
 
+const wiring = [
+  '// Registers the check before any session starts.',
+  'import { register } from "./registry";',
+  'export class Wiring extends Base {',
+  '  @inject() async start(token: Token): Promise<void> {',
+  '    register(checkToken, { retries: 3, strict: true, pattern: /^t-/ });',
+  '  }',
+  '}',
+  '',
+].join('\n');
+
 const titles = ['Check tokens', 'Expire sessions', 'Register the check', 'Rename the helper'];
 
 test.beforeAll(() => {
@@ -16,8 +27,9 @@ test.beforeAll(() => {
   const { folder, repo } = prepareChange(
     sandbox,
     {
-      trunk: { 'helper.txt': 'help\n' },
-      feature: { 'tokens.txt': lines('token'), 'sessions.txt': lines('session'), 'wiring.txt': 'register\n' },
+      trunk: { 'helper.txt': 'help\n', 'wiring.ts': 'register(checkToken, 1);\n' },
+      // Highlighted code, so the readability checks cover every token colour on added and removed lines.
+      feature: { 'tokens.txt': lines('token'), 'sessions.txt': lines('session'), 'wiring.ts': wiring },
     },
     { 'helper.txt': 'helpers.txt' },
   );
@@ -45,7 +57,7 @@ test.beforeAll(() => {
         explanation: 'Expires sessions.',
         unprovenMechanical: ['sessions.txt'],
       },
-      { title: titles[2], tier: 'wiring', files: ['wiring.txt'], explanation: 'Registers the check.' },
+      { title: titles[2], tier: 'wiring', files: ['wiring.ts'], explanation: 'Registers the check.' },
       { title: titles[3], tier: 'mechanical', files: ['helpers.txt'], explanation: 'Renamed.' },
     ],
   });
