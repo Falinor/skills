@@ -6,7 +6,7 @@ Agent skills in the [Agent Skills](https://agentskills.io) format. They run in C
 
 `/review-tour <pull request number|URL, or branch> [base <ref>] [since <sha>]` builds a **tour** of a change: a local, self-contained HTML page that leads a human reviewer through the change step by step, each step with an explanation and the real diffs from git. The page is written to a per-tour folder under the system temp directory, outside the checkout.
 
-Steps come in tiers: core logic, then wiring, then mechanical. Only files with a mechanical proof from git (pure move between files, pure rename, whitespace-only change outside whitespace-sensitive languages) reach the mechanical tier, shown as a table rather than diffs; files the base declares generated are listed apart as declared, not proven.
+Steps come in tiers: core logic, then wiring, then mechanical. Only files with a mechanical proof (from git: pure move between files, pure rename, whitespace-only change outside whitespace-sensitive languages; from [difftastic](https://github.com/Wilfred/difftastic) when installed: syntax-identical, an unchanged syntax tree) reach the mechanical tier, shown as a table rather than diffs; files the base declares generated are listed apart as declared, not proven.
 
 A pull request is fetched through `gh`, with nothing to check out by hand. The base is the one you give, else the pull request's base, else the remote's default branch; the tool never assumes `main`.
 
@@ -20,6 +20,8 @@ npx skills add Falinor/skills --skill review-tour
 
 Requires Node 24.12+ and git (gh for GitHub pull requests). The skill runs only when you invoke it.
 
+Optional: difftastic (`brew install difftastic` or `cargo install --locked difftastic`) lets the tour prove formatter reflows and re-indentation syntax-identical. Without it the tour still works; the tool never installs it.
+
 ## Development
 
 ```sh
@@ -27,7 +29,7 @@ npm ci
 npx playwright install chromium
 npm test            # typecheck, CLI tests, page tests
 npm run typecheck   # tsc --noEmit
-npm run test:cli    # node:test against throwaway git repositories
+npm run test:cli    # node:test against throwaway git repositories (the real-difftastic test runs when difft is installed, always in CI)
 npm run test:page   # Playwright on rendered pages
 ```
 

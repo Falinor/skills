@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseCommandArgs } from './args.ts';
+import { difftasticHint, hasDifftastic } from './difftastic.ts';
 import { UserError } from './errors.ts';
 import { describeFollowUp, followUpRange } from './follow-up.ts';
 import { markGenerated } from './generated.ts';
@@ -128,6 +129,7 @@ export function prepare(args: string[]): void {
           ]
         : []),
       ...describeFiles(change.files, toRead),
+      ...(hasDifftastic() ? [] : [difftasticHint]),
       `Next: write the tour plan to ${path.join(folder, workFolderFiles.plan)}, then run: render ${folder}`,
     ].join('\n'),
   );
