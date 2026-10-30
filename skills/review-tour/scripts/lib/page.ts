@@ -1,7 +1,9 @@
 // Builds the tour page as one self-contained HTML file. Every piece of text
 // from the tour plan or the patch goes through `escape`, or through the
-// escaping Markdown subset for prose. Its one script only navigates; the
-// Content-Security-Policy allows that script by hash and nothing else.
+// escaping Markdown subset for prose. Its one script navigates and, on a
+// pull request tour, gathers the reviewer's actions into a block they paste
+// to their agent; the Content-Security-Policy allows that script by hash and
+// nothing else.
 import { createHash } from 'node:crypto';
 import { describeFollowUp } from './follow-up.ts';
 import { escape } from './html.ts';
@@ -70,15 +72,28 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mechanical th, .mechanical td { border-bottom: 1px solid var(--border); padding: 0.2rem 0.75rem 0.2rem 0; text-align: left; }
 .mechanical .count { text-align: right; }
 .tier:last-child .step:last-child { min-height: calc(100vh - 2rem); }
-a:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.actions { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+.actions .actions-title { margin: 0 0 0.25rem; font-weight: 600; }
+.actions textarea, .draft textarea { display: block; box-sizing: border-box; width: 100%; margin: 0.25rem 0; font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem; }
+.actions textarea[hidden] { display: none; }
+.actions button, .draft button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.75rem; margin-right: 0.25rem; cursor: pointer; }
+.actions button:disabled { cursor: default; color: var(--muted); }
+.diff .line-comment { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.diff .line-comment:hover { color: var(--link); text-decoration: underline; }
+.diff .draft td { background: var(--surface); padding: 0.5rem; font-family: system-ui, sans-serif; }
+.step-done { display: inline-block; margin-bottom: 0.5rem; }
 `;
 
 // Navigation: j and k move to the next and previous step from the step being
 // read (the last one whose top reached the top of the viewport), through the
 // `#step-N` link; the sidebar marks that step and counts it. The last step is
 // tall enough to reach the top. The theme switch overrides the system theme.
-// The script never writes markup.
-const script = `addEventListener('DOMContentLoaded', () => {
+// On a pull request tour, the actions panel collects the steps ticked Done
+// and the comments written under a line (its number is a button), kept per
+// head in localStorage, into the block SKILL.md tells the agent to read. The
+// script never writes markup.
+const script = String.raw`addEventListener('DOMContentLoaded', () => {
   const steps = [...document.querySelectorAll('main .step')];
   const links = [...document.querySelectorAll('#sidebar a[href^="#step-"]')];
   const count = document.getElementById('progress-count');
@@ -116,6 +131,161 @@ const script = `addEventListener('DOMContentLoaded', () => {
   });
   systemDark.addEventListener('change', showTheme);
   showTheme();
+
+  const panel = document.getElementById('actions');
+  if (!panel) return;
+  const head = panel.dataset.head;
+  const key = 'review-tour:' + head;
+  const block = document.getElementById('actions-block');
+  const summary = document.getElementById('actions-summary');
+  const copy = document.getElementById('actions-copy');
+  const clear = document.getElementById('actions-clear');
+  const status = document.getElementById('actions-status');
+  let state = { done: [], comments: [] };
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
+    if (saved && Array.isArray(saved.done) && Array.isArray(saved.comments)) {
+      state.done = saved.done.filter((step) => Number.isInteger(step));
+      state.comments = saved.comments.filter(
+        (c) => c && typeof c.file === 'string' && Number.isInteger(c.line) && (c.side === 'new' || c.side === 'old') && typeof c.body === 'string' && c.body.trim() !== '',
+      );
+    }
+  } catch {}
+  const save = () => {
+    try {
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch {}
+  };
+  const ranges = (numbers) => {
+    const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+    const parts = [];
+    for (let i = 0; i < sorted.length; i++) {
+      let j = i;
+      while (sorted[j + 1] === sorted[j] + 1) j++;
+      parts.push(j > i ? sorted[i] + '-' + sorted[j] : String(sorted[i]));
+      i = j;
+    }
+    return parts.join(',');
+  };
+  // A path with a space, a quote, a backslash or a control character goes as a JSON string.
+  const quote = (file) => (/^[^\s"\\\x00-\x1f\x7f-\x9f]+$/.test(file) ? file : JSON.stringify(file));
+  const written = () => state.comments.filter((c) => c.body.trim() !== '');
+  const text = () => {
+    const lines = ['review-tour actions ' + head];
+    if (state.done.length > 0) lines.push('done ' + ranges(state.done));
+    for (const c of written()) {
+      lines.push('comment ' + quote(c.file) + ' ' + c.line + ' ' + c.side);
+      for (const line of c.body.replace(/\s+$/, '').split('\n')) lines.push(line === '' ? '>' : '> ' + line);
+    }
+    return lines.join('\n');
+  };
+  const show = () => {
+    const comments = written().length;
+    const any = state.done.length > 0 || comments > 0;
+    summary.textContent = any
+      ? state.done.length + (state.done.length === 1 ? ' step' : ' steps') + ' done, ' + comments + (comments === 1 ? ' comment' : ' comments') + '.'
+      : 'Tick Done on a step, or click a line number to comment.';
+    block.value = any ? text() : '';
+    block.hidden = !any;
+    copy.disabled = !any;
+    clear.disabled = !any;
+    status.textContent = '';
+    save();
+  };
+
+  const boxes = [...document.querySelectorAll('input.step-done')];
+  for (const box of boxes) {
+    const step = Number(box.dataset.step);
+    box.checked = state.done.includes(step);
+    box.addEventListener('change', () => {
+      state.done = state.done.filter((n) => n !== step);
+      if (box.checked) state.done.push(step);
+      show();
+    });
+  }
+
+  const id = (file, side, line) => JSON.stringify([file, side, line]);
+  const rows = new Map();
+  const drafts = new Map();
+  const openDraft = (file, side, line, focus) => {
+    const at = id(file, side, line);
+    let comment = state.comments.find((c) => c.file === file && c.side === side && c.line === line);
+    if (!comment) {
+      comment = { file, side, line, body: '' };
+      state.comments.push(comment);
+    }
+    let draft = drafts.get(at);
+    if (!draft) {
+      const row = rows.get(at);
+      if (!row) return;
+      draft = document.createElement('tr');
+      draft.className = 'draft';
+      const cell = draft.insertCell();
+      cell.colSpan = 3;
+      const label = document.createElement('label');
+      label.textContent = 'Comment on ' + side + ' line ' + line;
+      const area = document.createElement('textarea');
+      area.rows = 3;
+      area.value = comment.body;
+      label.append(area);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Remove comment';
+      area.addEventListener('input', () => {
+        comment.body = area.value;
+        show();
+      });
+      remove.addEventListener('click', () => {
+        state.comments = state.comments.filter((c) => c !== comment);
+        draft.remove();
+        drafts.delete(at);
+        show();
+        row.querySelector('.line-comment').focus();
+      });
+      cell.append(label, remove);
+      row.after(draft);
+      drafts.set(at, draft);
+    }
+    if (focus) draft.querySelector('textarea').focus();
+  };
+  const oldSide = panel.dataset.oldSide === 'yes';
+  for (const article of document.querySelectorAll('article.file[data-file]')) {
+    const file = decodeURIComponent(article.dataset.file);
+    for (const row of article.querySelectorAll('tr.add, tr.del, tr.context')) {
+      const side = row.classList.contains('del') ? 'old' : 'new';
+      if (side === 'old' && !oldSide) continue;
+      const cell = row.cells[side === 'old' ? 0 : 1];
+      const line = Number(cell.textContent);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'line-comment';
+      button.textContent = cell.textContent;
+      button.setAttribute('aria-label', 'Comment on ' + file + ', ' + side + ' line ' + line);
+      button.addEventListener('click', () => openDraft(file, side, line, true));
+      cell.replaceChildren(button);
+      rows.set(id(file, side, line), row);
+    }
+  }
+  for (const c of [...state.comments]) openDraft(c.file, c.side, c.line, false);
+
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(block.value);
+      status.textContent = 'Copied: paste it into the chat with your agent.';
+    } catch {
+      block.focus();
+      block.select();
+      status.textContent = 'Selected: copy it, then paste it into the chat with your agent.';
+    }
+  });
+  clear.addEventListener('click', () => {
+    state = { done: [], comments: [] };
+    for (const box of boxes) box.checked = false;
+    for (const draft of drafts.values()) draft.remove();
+    drafts.clear();
+    show();
+  });
+  show();
 });`;
 const scriptHash = createHash('sha256').update(script).digest('base64');
 
@@ -167,7 +337,7 @@ function renderFile({ file, hunks, binary }: FileDiff, callouts: Callout[], unpr
     : hunks.length > 0
       ? `<table class="diff">${hunks.map((hunk) => renderHunk(hunk, callouts)).join('')}</table>`
       : '<p class="note">No content change.</p>';
-  return `<article class="file"><h4 class="file-path"><code>${escape(name)}</code>${flag} <span class="stats">${stats}</span></h4>${body}</article>`;
+  return `<article class="file" data-file="${escape(encodeURIComponent(file.path))}"><h4 class="file-path"><code>${escape(name)}</code>${flag} <span class="stats">${stats}</span></h4>${body}</article>`;
 }
 
 function mechanicalTable(files: ChangedFile[], caption: string, proofOf: (file: ChangedFile) => string): string {
@@ -228,7 +398,7 @@ function renderAids(step: Step): string {
   return parts.join('');
 }
 
-function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>): string {
+function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>, actions: boolean): string {
   const id = `step-${index + 1}`;
   const body =
     step.tier === 'mechanical'
@@ -245,6 +415,7 @@ function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>): st
   return (
     `<section class="step" id="${id}" aria-labelledby="${id}-title">` +
     `<h3 id="${id}-title"><a href="#${id}">Step ${index + 1}</a> · ${escape(step.title)}</h3>` +
+    (actions ? `<label class="step-done"><input type="checkbox" class="step-done" data-step="${index + 1}"> Done</label>` : '') +
     `<div class="explanation">${markdown(step.explanation)}</div>` +
     renderAids(step) +
     body +
@@ -252,8 +423,28 @@ function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>): st
   );
 }
 
+/**
+ * The actions panel of a pull request tour: what the reviewer ticked and
+ * wrote on the page, as one block to paste to their agent. A narrowed
+ * follow-up's old side is the earlier head, which `comment` refuses.
+ */
+function renderActions(change: Change): string {
+  if (!change.pullRequest) return '';
+  const oldSide = change.followUp?.from === undefined ? 'yes' : 'no';
+  return (
+    `<section class="actions" id="actions" aria-labelledby="actions-title" data-head="${escape(change.head)}" data-old-side="${oldSide}">` +
+    `<p class="actions-title" id="actions-title">For your agent</p>` +
+    `<p id="actions-summary"></p>` +
+    `<textarea id="actions-block" readonly rows="6" aria-label="Actions to paste to your agent" hidden></textarea>` +
+    `<button type="button" id="actions-copy" disabled>Copy</button>` +
+    `<button type="button" id="actions-clear" disabled>Clear</button>` +
+    `<p id="actions-status" role="status"></p>` +
+    `</section>`
+  );
+}
+
 /** The sidebar: every step, grouped by tier, as a link to its `#step-N`. */
-function renderSidebar(plan: TourPlan): string {
+function renderSidebar(change: Change, plan: TourPlan): string {
   const groups = tiers.flatMap((tier) => {
     const links = plan.steps.flatMap((step, index) =>
       step.tier === tier
@@ -271,14 +462,15 @@ function renderSidebar(plan: TourPlan): string {
     `<nav class="sidebar" id="sidebar" aria-label="Steps">` +
     `<p class="progress"><span id="progress-count">0</span> of ${total} ${total === 1 ? 'step' : 'steps'}</p>` +
     `${groups.join('')}` +
-    `<button type="button" class="theme-switch" id="theme-switch" aria-pressed="false">Dark theme</button></nav>`
+    `<button type="button" class="theme-switch" id="theme-switch" aria-pressed="false">Dark theme</button>` +
+    `${renderActions(change)}</nav>`
   );
 }
 
 export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, FileDiff>): string {
   // Validation keeps steps in tier order, so grouping keeps their numbers ascending.
   const steps = tiers.flatMap((tier) => {
-    const inTier = plan.steps.flatMap((step, index) => (step.tier === tier ? [renderStep(step, index, diffs)] : []));
+    const inTier = plan.steps.flatMap((step, index) => (step.tier === tier ? [renderStep(step, index, diffs, change.pullRequest !== undefined)] : []));
     if (inTier.length === 0) return [];
     return [
       `<section class="tier" id="tier-${tier}" aria-labelledby="tier-${tier}-title">` +
@@ -296,7 +488,7 @@ export function renderPage(change: Change, plan: TourPlan, diffs: Map<string, Fi
 <script>${script}</script>
 </head>
 <body>
-${renderSidebar(plan)}
+${renderSidebar(change, plan)}
 <div class="content">
 <header>
 <h1>Tour of <code>${escape(change.target)}</code></h1>
