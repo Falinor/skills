@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { handover } from './handover.ts';
+import { mechanicalOffer } from './mechanical-batch.ts';
 import { renderPage } from './page.ts';
 import { cutPatch } from './patch.ts';
 import { validatePlan } from './plan.ts';
@@ -25,7 +26,7 @@ function openPage(page: string): void {
   if (result.error || result.status !== 0) console.log('Could not open a browser; open the page above by hand.');
 }
 
-function readPlan(folder: string): unknown {
+export function readPlan(folder: string): unknown {
   const file = path.join(folder, workFolderFiles.plan);
   if (!fs.existsSync(file)) throw new UserError(`no tour plan at ${file}; write it first.`);
   try {
@@ -48,5 +49,7 @@ export function render(args: string[]): void {
 
   const url = pathToFileURL(page).href;
   console.log(`Page: ${page}\nOpen: ${url}\n\n${handover(plan, url)}`);
+  const offer = mechanicalOffer(plan, change);
+  if (offer) console.log(`\n${offer}`);
   if (values.open) openPage(page);
 }

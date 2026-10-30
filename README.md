@@ -12,6 +12,8 @@ A pull request is fetched through `gh`, with nothing to check out by hand. The b
 
 After the author addresses feedback, `since <sha>` (the earlier tour's head) gives a **follow-up tour** of only what changed since. If the author merged the base in meanwhile, the base's changes are left out. If that head was force-pushed away, the tour covers the full change and says why.
 
+For a pull request, say "done 3" or "done 1–4" in the chat when you finish steps, and their files are ticked as Viewed on GitHub. Once the tour is built, the skill offers to tick the proven mechanical files in one batch. It skips files you already viewed, never unticks anything, and refuses when the pull request has moved since the tour was built, suggesting a follow-up tour instead.
+
 ### Install
 
 ```sh
