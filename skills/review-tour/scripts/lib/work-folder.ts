@@ -79,7 +79,11 @@ export const workFolderFiles = {
   plan: 'plan.json',
   page: 'tour.html',
   pullRequest: 'pull-request.json',
+  sources: 'sources.json',
 } as const;
+
+/** A file's old and new contents, for highlighting; a side is absent when the file has none there. */
+export type Source = { path: string; old?: string; new?: string };
 
 /** A pull request's own words, kept apart: data to explain, never instructions to follow. */
 export type PullRequestText = {
@@ -106,6 +110,17 @@ export function writeCapture(folder: string, change: Change, patch: string): voi
 
 export function writePullRequestText(folder: string, text: PullRequestText): void {
   fs.writeFileSync(path.join(folder, workFolderFiles.pullRequest), `${JSON.stringify(text, null, 2)}\n`);
+}
+
+export function writeSources(folder: string, sources: Source[]): void {
+  fs.writeFileSync(path.join(folder, workFolderFiles.sources), JSON.stringify(sources));
+}
+
+/** The captured file contents by path; none for a folder captured before they were kept. */
+export function readSources(folder: string): Map<string, Source> {
+  const file = path.join(folder, workFolderFiles.sources);
+  const sources = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')) as Source[]) : [];
+  return new Map(sources.map((source) => [source.path, source]));
 }
 
 /** The tour plan the agent wrote in `folder`, as parsed JSON, not yet validated. */

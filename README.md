@@ -39,7 +39,7 @@ npm run test:cli    # node:test against throwaway git repositories (the real-dif
 npm run test:page   # Playwright on rendered pages
 ```
 
-The skill's scripts are TypeScript run directly by Node (type stripping) with built-in modules only; the dev dependencies serve the tests and the type check alone. See `GLOSSARY.md` for the vocabulary and `docs/adr/` for the decisions.
+The skill's scripts are TypeScript run directly by Node (type stripping) with built-in modules only, plus highlight.js vendored under `skills/review-tour/scripts/vendor/`; the dev dependencies serve the tests and the type check alone. See `GLOSSARY.md` for the vocabulary and `docs/adr/` for the decisions.
 
 ### Agent eval
 

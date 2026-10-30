@@ -1,7 +1,7 @@
 // Cuts the captured patch into per-file diffs. The renderer shows these;
 // the tour plan never carries diff text.
 import { UserError } from './errors.ts';
-import type { ChangedFile } from './work-folder.ts';
+import type { ChangedFile, Source } from './work-folder.ts';
 
 export type DiffLine = {
   kind: 'add' | 'del' | 'context' | 'note';
@@ -13,7 +13,7 @@ export type DiffLine = {
 
 export type Hunk = { header: string; lines: DiffLine[] };
 
-export type FileDiff = { file: ChangedFile; hunks: Hunk[]; binary: boolean };
+export type FileDiff = { file: ChangedFile; hunks: Hunk[]; binary: boolean; source?: Source };
 
 /** The patch's `diff --git` sections, one per changed file, in the order of change.json's files. */
 export function patchSections(patch: string): string[] {
@@ -23,13 +23,13 @@ export function patchSections(patch: string): string[] {
   return patch.split(/^(?=diff --git )/m).filter((section) => section.startsWith('diff --git '));
 }
 
-/** One diff per changed file, keyed by path. */
-export function cutPatch(patch: string, files: ChangedFile[]): Map<string, FileDiff> {
+/** One diff per changed file, keyed by path, with its captured contents when `prepare` kept them. */
+export function cutPatch(patch: string, files: ChangedFile[], sources: Map<string, Source>): Map<string, FileDiff> {
   const sections = patchSections(patch);
   if (sections.length !== files.length) {
     throw new UserError('change.patch does not match change.json; run prepare again.');
   }
-  return new Map(files.map((file, index) => [file.path, parseSection(file, sections[index])]));
+  return new Map(files.map((file, index) => [file.path, { ...parseSection(file, sections[index]), source: sources.get(file.path) }]));
 }
 
 function parseSection(file: ChangedFile, section: string): FileDiff {
