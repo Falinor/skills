@@ -5,8 +5,9 @@
 import { createHash } from 'node:crypto';
 import { describeFollowUp } from './follow-up.ts';
 import { escape } from './html.ts';
+import { highlightedLine, highlightFile } from './highlight.ts';
 import { inlineMarkdown, markdown } from './markdown.ts';
-import type { FileDiff, Hunk } from './patch.ts';
+import type { DiffLine, FileDiff, Hunk } from './patch.ts';
 import { doors, tierLabels, tiers, type Callout, type Intent, type Step, type TourPlan, type Trace } from './plan.ts';
 import { describeProofs, isProven, type Change, type ChangedFile } from './work-folder.ts';
 
@@ -15,11 +16,15 @@ import { describeProofs, isProven, type Change, type ChangedFile } from './work-
 const lightTheme =
   'color-scheme: light; --bg: #ffffff; --text: #1f2328; --muted: #59636e; --border: #d1d9e0; --surface: #f6f8fa; ' +
   '--link: #0969da; --add: #dafbe1; --del: #ffebe9; --mark: #fff8c5; --mark-edge: #9a6700; --danger: #b42318; ' +
-  '--flag-bg: #fff3cd; --flag-text: #664d03;';
+  '--flag-bg: #fff3cd; --flag-text: #664d03; ' +
+  '--code-keyword: #cf222e; --code-string: #0a3069; --code-constant: #0550ae; --code-title: #6639ba; ' +
+  '--code-type: #953800; --code-tag: #116329; --code-comment: #59636e;';
 const darkTheme =
   'color-scheme: dark; --bg: #0d1117; --text: #e6edf3; --muted: #9198a1; --border: #3d444d; --surface: #151b23; ' +
   '--link: #4493f8; --add: #12261e; --del: #25171c; --mark: #272115; --mark-edge: #d29922; --danger: #ff7b72; ' +
-  '--flag-bg: #3b2e0a; --flag-text: #e3b341;';
+  '--flag-bg: #3b2e0a; --flag-text: #e3b341; ' +
+  '--code-keyword: #ff7b72; --code-string: #a5d6ff; --code-constant: #79c0ff; --code-title: #d2a8ff; ' +
+  '--code-type: #ffa657; --code-tag: #7ee787; --code-comment: #9198a1;';
 
 const styles = `
 :root { ${lightTheme} }
@@ -54,6 +59,15 @@ code, .diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .diff .add { background: var(--add); }
 .diff .del { background: var(--del); }
 .diff .hunk-header td, .diff .note td, .note { color: var(--muted); }
+.diff :is(.hljs-keyword, .hljs-doctag, .hljs-template-tag, .hljs-template-variable, .hljs-type, .hljs-variable.language_) { color: var(--code-keyword); }
+.diff :is(.hljs-string, .hljs-regexp, .hljs-meta .hljs-string) { color: var(--code-string); }
+.diff :is(.hljs-number, .hljs-literal, .hljs-attr, .hljs-attribute, .hljs-meta, .hljs-operator, .hljs-variable, .hljs-selector-attr, .hljs-selector-class, .hljs-selector-id) { color: var(--code-constant); }
+.diff :is(.hljs-title, .hljs-title.function_, .hljs-section) { color: var(--code-title); }
+.diff :is(.hljs-title.class_, .hljs-built_in, .hljs-symbol) { color: var(--code-type); }
+.diff :is(.hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-bullet) { color: var(--code-tag); }
+.diff :is(.hljs-comment, .hljs-code, .hljs-formula) { color: var(--code-comment); }
+.diff .hljs-emphasis { font-style: italic; }
+.diff :is(.hljs-strong, .hljs-section) { font-weight: 600; }
 .intent { border: 1px solid var(--border); border-radius: 6px; padding: 0 1rem; margin-bottom: 1rem; }
 .intent .why { white-space: pre-wrap; font-size: 1.1rem; }
 .intent .visual { background: var(--surface); padding: 0.75rem; overflow-x: auto; }
@@ -142,12 +156,26 @@ function renderCallout(callout: Callout): string {
   );
 }
 
-function renderHunk(hunk: Hunk, callouts: Callout[]): string {
+/** Each side's lines as highlighted HTML, by line number. */
+type Highlighted = { old?: (string | undefined)[]; new?: (string | undefined)[] };
+
+/** The line's code: highlighted from its side's file when that matches, plain escaped text otherwise. */
+function renderCode(line: DiffLine, highlighted: Highlighted): string {
+  const html =
+    line.kind === 'del'
+      ? highlightedLine(highlighted.old, line.oldNumber, line.text)
+      : line.kind === 'note'
+        ? undefined
+        : highlightedLine(highlighted.new, line.newNumber, line.text);
+  return escape(signs[line.kind]) + (html ?? escape(line.text));
+}
+
+function renderHunk(hunk: Hunk, callouts: Callout[], highlighted: Highlighted): string {
   const rows = hunk.lines.map(
     (line) =>
       `<tr class="${line.kind}"><td class="number">${line.oldNumber ?? ''}</td>` +
       `<td class="number">${line.newNumber ?? ''}</td>` +
-      `<td class="code">${escape(signs[line.kind] + line.text)}</td></tr>` +
+      `<td class="code">${renderCode(line, highlighted)}</td></tr>` +
       callouts
         .filter((callout) => callout.line === (callout.side === 'old' ? line.oldNumber : line.newNumber))
         .map(renderCallout)
@@ -158,14 +186,18 @@ function renderHunk(hunk: Hunk, callouts: Callout[]): string {
 
 const nameOf = (file: ChangedFile) => (file.oldPath ? `${file.oldPath} → ${file.path}` : file.path);
 
-function renderFile({ file, hunks, binary }: FileDiff, callouts: Callout[], unprovenMechanical: boolean): string {
+function renderFile({ file, hunks, binary, source }: FileDiff, callouts: Callout[], unprovenMechanical: boolean): string {
   const name = nameOf(file);
+  const highlighted: Highlighted = {
+    old: source?.old === undefined ? undefined : highlightFile(file.oldPath ?? file.path, source.old),
+    new: source?.new === undefined ? undefined : highlightFile(file.path, source.new),
+  };
   const flag = unprovenMechanical ? ' <span class="flag">Unproven mechanical</span>' : '';
   const stats = file.additions === null ? 'binary' : `+${file.additions} −${file.deletions}`;
   const body = binary
     ? '<p class="note">Binary file, not shown.</p>'
     : hunks.length > 0
-      ? `<table class="diff">${hunks.map((hunk) => renderHunk(hunk, callouts)).join('')}</table>`
+      ? `<table class="diff">${hunks.map((hunk) => renderHunk(hunk, callouts, highlighted)).join('')}</table>`
       : '<p class="note">No content change.</p>';
   return `<article class="file"><h4 class="file-path"><code>${escape(name)}</code>${flag} <span class="stats">${stats}</span></h4>${body}</article>`;
 }
