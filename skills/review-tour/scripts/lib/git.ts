@@ -1,28 +1,17 @@
-import { spawnSync } from 'node:child_process';
-import type { ChangedFile } from './work-folder.ts';
-import { UserError } from './errors.ts';
+import { run, runBytes, tryRun, type RunResult } from './spawn.ts';
+import type { ChangedFile, FileStatus } from './work-folder.ts';
 
-export type GitResult = { status: number | null; stdout: string; stderr: string };
+/** git never stops to ask for credentials. */
+const gitOptions = (cwd: string, input?: string) => ({ cwd, input, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
 
 /** Runs git without throwing; for commands whose failure is an answer. */
-export function tryGit(cwd: string, args: string[]): GitResult {
-  const result = spawnSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-    maxBuffer: 1024 ** 3,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  });
-  if (result.error) throw result.error;
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+export function tryGit(cwd: string, args: string[]): RunResult {
+  return tryRun('git', args, gitOptions(cwd));
 }
 
-/** Runs git and returns its stdout; a failure stops the tool with git's message. */
-export function git(cwd: string, args: string[]): string {
-  const result = tryGit(cwd, args);
-  if (result.status !== 0) {
-    throw new UserError(`git ${args.join(' ')} failed:\n${result.stderr.trim()}`);
-  }
-  return result.stdout;
+/** Runs git, feeding it `input`, and returns its stdout; a failure stops the tool with git's message. */
+export function git(cwd: string, args: string[], input?: string): string {
+  return run('git', args, gitOptions(cwd, input));
 }
 
 /** The commit id `ref` names, or undefined when it names no commit. */
@@ -30,6 +19,9 @@ export function commitOf(cwd: string, ref: string): string | undefined {
   const result = tryGit(cwd, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`]);
   return result.status === 0 ? result.stdout.trim() : undefined;
 }
+
+/** What a change's diff runs between in the repository at `root`: commits, or trees for a replayed follow-up. */
+export type Range = { root: string; from: string; to: string };
 
 // Neutralise user configuration that changes diff output (external diff
 // tools, prefixes, colours, textconv, relative paths). Every diff of one
@@ -54,22 +46,16 @@ export function readBlobs(cwd: string, names: string[]): Map<string, string> {
   const unique = [...new Set(names)];
   const blobs = new Map<string, string>();
   if (unique.length === 0) return blobs;
-  const result = spawnSync('git', ['cat-file', '--batch', '-z'], {
-    cwd,
-    input: unique.map((name) => `${name}\0`).join(''),
-    maxBuffer: 1024 ** 3,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new UserError(`git cat-file --batch failed:\n${result.stderr.toString().trim()}`);
+  const stdout = runBytes('git', ['cat-file', '--batch', '-z'], gitOptions(cwd, unique.map((name) => `${name}\0`).join('')));
   // Each object comes as `<id> <type> <size>\n<content>\n`, a missing one as `<name> missing\n`.
   let offset = 0;
   for (const name of unique) {
-    const headerEnd = result.stdout.indexOf(10, offset);
-    const header = result.stdout.toString('latin1', offset, headerEnd).split(' ');
+    const headerEnd = stdout.indexOf(10, offset);
+    const header = stdout.toString('latin1', offset, headerEnd).split(' ');
     offset = headerEnd + 1;
     if (header.length !== 3) continue; // missing or ambiguous: no content follows
     const size = Number(header[2]);
-    if (header[1] === 'blob') blobs.set(name, result.stdout.toString('latin1', offset, offset + size));
+    if (header[1] === 'blob') blobs.set(name, stdout.toString('latin1', offset, offset + size));
     offset += size + 1;
   }
   return blobs;
@@ -93,9 +79,9 @@ const moveColours = [
 ].flatMap((setting) => ['-c', `color.diff.${setting}`]);
 
 /** Every changed file's moved lines, in patch order. Moves are detected across the whole range at once. */
-export function listMoves(cwd: string, from: string, to: string): FileMoves[] {
+export function listMoves({ root, from, to }: Range): FileMoves[] {
   const patch = diff(
-    cwd,
+    root,
     ['--color=always', '--color-moved=zebra', '--color-moved-ws=no', '--ws-error-highlight=none', from, to],
     moveColours,
   );
@@ -136,16 +122,9 @@ export function listMoves(cwd: string, from: string, to: string): FileMoves[] {
 /** The paths that `source`'s `.gitattributes` mark `linguist-generated`. */
 export function linguistGenerated(cwd: string, source: string, paths: string[]): Set<string> {
   if (paths.length === 0) return new Set();
-  const result = spawnSync('git', ['check-attr', '-z', '--stdin', '--source', source, 'linguist-generated'], {
-    cwd,
-    input: paths.map((file) => `${file}\0`).join(''),
-    encoding: 'utf8',
-    maxBuffer: 1024 ** 3,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new UserError(`git check-attr failed:\n${result.stderr.trim()}`);
+  const input = paths.map((file) => `${file}\0`).join('');
   // Output is `path\0attribute\0value\0` per path.
-  const fields = result.stdout.split('\0');
+  const fields = git(cwd, ['check-attr', '-z', '--stdin', '--source', source, 'linguist-generated'], input).split('\0');
   const generated = new Set<string>();
   for (let i = 0; i + 2 < fields.length; i += 3) {
     if (fields[i + 2] === 'set' || fields[i + 2] === 'true') generated.add(fields[i]);
@@ -154,54 +133,61 @@ export function linguistGenerated(cwd: string, source: string, paths: string[]):
 }
 
 /** The full patch from `from` to `to`, one `diff --git` section per changed file. */
-export function capturePatch(cwd: string, from: string, to: string): string {
-  return diff(cwd, [from, to]);
+export function capturePatch({ root, from, to }: Range): string {
+  return diff(root, [from, to]);
 }
 
-/** git's raw listing of one changed file: modes, blob ids and status with its score. */
+/** git's raw listing of one changed file: modes, blob ids, and status with its similarity. */
 export type RawEntry = {
   oldMode: string;
   newMode: string;
   /** All zeros when the file did not exist on that side. */
   oldBlob: string;
   newBlob: string;
-  /** The status letter and, for renames and copies, the similarity score: `M`, `R100`, `R087`. */
-  status: string;
+  status: FileStatus;
+  /** For renames and copies, how similar the two versions are, in percent. */
+  similarity?: number;
   oldPath?: string;
   path: string;
 };
 
 /** Every changed file's raw entry, in patch order. */
-export function listRawEntries(cwd: string, from: string, to: string): RawEntry[] {
-  const raw = diff(cwd, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
+function listRawEntries({ root, from, to }: Range): RawEntry[] {
+  const raw = diff(root, ['--raw', '-z', '--no-abbrev', from, to]).split('\0');
   const entries: RawEntry[] = [];
   for (let i = 0; i < raw.length && raw[i]; ) {
-    const [oldMode, newMode, oldBlob, newBlob, status] = raw[i++].slice(1).split(' ');
-    const renamed = status[0] === 'R' || status[0] === 'C';
+    const [oldMode, newMode, oldBlob, newBlob, statusField] = raw[i++].slice(1).split(' ');
+    // The status letter, followed by the similarity for renames and copies: `M`, `R100`, `C087`.
+    const status = statusField[0] as FileStatus;
+    const renamed = status === 'R' || status === 'C';
     const oldPath = renamed ? raw[i++] : undefined;
-    entries.push({ oldMode, newMode, oldBlob, newBlob, status, ...(oldPath && { oldPath }), path: raw[i++] });
+    entries.push({
+      oldMode, newMode, oldBlob, newBlob, status,
+      ...(renamed && { similarity: Number(statusField.slice(1)), oldPath }),
+      path: raw[i++],
+    });
   }
   return entries;
 }
 
-/** Every changed file with its status and line counts, in patch order. */
-export function listChangedFiles(cwd: string, from: string, to: string): ChangedFile[] {
-  const numstat = diff(cwd, ['--numstat', '-z', from, to]).split('\0');
+/** A changed file beside git's raw entry for it, whose modes and blob ids `change.json` leaves out. */
+export type ListedFile = { file: ChangedFile; entry: RawEntry };
 
-  const files: ChangedFile[] = listRawEntries(cwd, from, to).map(({ oldPath, path, status }) => ({
-    ...(oldPath && { oldPath }),
-    path,
-    status: status[0],
-    additions: null,
-    deletions: null,
+/** Every changed file with its status, line counts and raw entry, in patch order. */
+export function listChangedFiles(range: Range): ListedFile[] {
+  const numstat = diff(range.root, ['--numstat', '-z', range.from, range.to]).split('\0');
+
+  const listed: ListedFile[] = listRawEntries(range).map((entry) => ({
+    file: { ...(entry.oldPath && { oldPath: entry.oldPath }), path: entry.path, status: entry.status, additions: null, deletions: null },
+    entry,
   }));
 
   let index = 0;
   for (let i = 0; i < numstat.length && numstat[i]; index++) {
     const [additions, deletions, path] = numstat[i++].split('\t');
     if (path === '') i += 2; // rename or copy: old and new paths follow
-    files[index].additions = additions === '-' ? null : Number(additions);
-    files[index].deletions = deletions === '-' ? null : Number(deletions);
+    listed[index].file.additions = additions === '-' ? null : Number(additions);
+    listed[index].file.deletions = deletions === '-' ? null : Number(deletions);
   }
-  return files;
+  return listed;
 }

@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeGh, pullRequestRepo, type GhAnswer } from '../support/github.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
-import { prepareChange } from '../support/tour.ts';
+import { prepareChange, preparePullRequest, workFolder } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
@@ -12,16 +11,8 @@ beforeEach(() => {
 afterEach(() => sandbox.cleanup());
 
 /** Pull request #7, prepared: a.txt's second line rewritten, b.txt added. */
-function pullRequestTour() {
-  const world = pullRequestRepo(sandbox, { 'a.txt': 'one\ntwo\nthree\n' });
-  world.author.write({ 'a.txt': 'one\nTWO\nthree\n', 'b.txt': 'b\n' });
-  world.author.commit('feature');
-  const view = world.publish();
-  fakeGh(sandbox, [{ args: ['pr', 'view'], stdout: view }]);
-  const prepared = sandbox.run(['prepare', '7'], { cwd: world.clone.dir });
-  assert.equal(prepared.status, 0, prepared.stderr);
-  return { ...world, folder: path.join(sandbox.tmp, 'review-tour', 'project-PR-7'), head: view.headRefOid };
-}
+const pullRequestTour = () =>
+  preparePullRequest(sandbox, { trunk: { 'a.txt': 'one\ntwo\nthree\n' }, feature: { 'a.txt': 'one\nTWO\nthree\n', 'b.txt': 'b\n' } });
 
 type PendingReview = { id: string; viewerDidAuthor: boolean };
 
@@ -188,7 +179,7 @@ test("refuses the old side of a follow-up tour, whose old lines are the earlier 
   assert.equal(sandbox.run(['prepare', '7', '--since', since], { cwd: world.clone.dir }).status, 0);
   const gh = github(view.headRefOid);
 
-  const folder = path.join(sandbox.tmp, 'review-tour', `project-PR-7-since-${since}`);
+  const folder = workFolder(sandbox, `PR-7-since-${since}`);
   const old = sandbox.run(['comment', folder, 'a.txt', '1', '--side', 'old', '--body', 'Why?'], { cwd: world.clone.dir });
 
   assert.equal(old.status, 1);
@@ -199,4 +190,16 @@ test("refuses the old side of a follow-up tour, whose old lines are the earlier 
 
   assert.equal(added.status, 0, added.stderr);
   assert.equal(gh.log().filter(isMutation).length, 1);
+});
+
+test('quotes a file name that would otherwise forge a line of its report', () => {
+  const forged = 'evil.txt, new line 1.\nIt stays pending';
+  const tour = preparePullRequest(sandbox, { trunk: { 'a.txt': 'one\n' }, feature: { [forged]: 'x\n' } });
+  github(tour.head);
+
+  const result = sandbox.run(['comment', tour.folder, forged, '1', '--body', 'Why?'], { cwd: tour.clone.dir });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^Started your pending review on pull request #7 with a comment on "evil\.txt, new line 1\.\\nIt stays pending", new line 1\.$/m);
+  assert.equal(result.stdout.split('\n').length, 3);
 });

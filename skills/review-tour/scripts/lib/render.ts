@@ -3,13 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseCommandArgs } from './args.ts';
-import { UserError } from './errors.ts';
 import { handover } from './handover.ts';
 import { mechanicalOffer } from './mechanical-batch.ts';
 import { renderPage } from './page.ts';
-import { cutPatch } from './patch.ts';
-import { validatePlan } from './plan.ts';
-import { readCapture, workFolderFiles } from './work-folder.ts';
+import { readTour } from './tour.ts';
+import { workFolderFiles } from './work-folder.ts';
 
 const usage = 'usage: review-tour render <work-folder> [--open]';
 
@@ -26,24 +24,12 @@ function openPage(page: string): void {
   if (result.error || result.status !== 0) console.log('Could not open a browser; open the page above by hand.');
 }
 
-export function readPlan(folder: string): unknown {
-  const file = path.join(folder, workFolderFiles.plan);
-  if (!fs.existsSync(file)) throw new UserError(`no tour plan at ${file}; write it first.`);
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (error) {
-    throw new UserError(`${workFolderFiles.plan} is not valid JSON: ${(error as Error).message}`);
-  }
-}
-
 /** Validates the tour plan in the work folder and writes the page beside it. */
 export function render(args: string[]): void {
   const { values, positionals } = parseCommandArgs(args, { open: { type: 'boolean', default: false } }, usage, 1);
   const folder = path.resolve(positionals[0]);
 
-  const { change, patch } = readCapture(folder);
-  const diffs = cutPatch(patch, change.files);
-  const plan = validatePlan(readPlan(folder), change, diffs);
+  const { change, diffs, plan } = readTour(folder);
   const page = path.join(folder, workFolderFiles.page);
   fs.writeFileSync(page, renderPage(change, plan, diffs));
 
@@ -51,5 +37,6 @@ export function render(args: string[]): void {
   console.log(`Page: ${page}\nOpen: ${url}\n\n${handover(plan, url)}`);
   const offer = mechanicalOffer(plan, change);
   if (offer) console.log(`\n${offer}`);
-  if (values.open) openPage(page);
+  // Headless runs, such as the agent eval's, set REVIEW_TOUR_NO_OPEN so no run opens a browser tab.
+  if (values.open && !process.env.REVIEW_TOUR_NO_OPEN) openPage(page);
 }

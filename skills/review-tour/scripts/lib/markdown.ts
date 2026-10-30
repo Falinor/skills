@@ -1,7 +1,7 @@
 // The Markdown subset tour plan prose may use: code spans, bold, lists and
 // https links. Every piece of text goes through `escape`, so raw HTML in the
 // plan is shown as text and never reaches the page as markup.
-import { escape } from './page.ts';
+import { escape } from './html.ts';
 
 // Alternatives are tried left to right at each position, and a code span's
 // content is never read as bold or as a link. Only https links are links.

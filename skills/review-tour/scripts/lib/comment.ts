@@ -5,10 +5,10 @@ import path from 'node:path';
 import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { graphql } from './gh.ts';
-import { cutPatch } from './patch.ts';
 import { misplacedAnchor } from './plan.ts';
+import { printablePath } from './printable.ts';
 import { freshPullRequest } from './stale-tour.ts';
-import { readCapture } from './work-folder.ts';
+import { readChange } from './tour.ts';
 
 const usage = [
   'usage: review-tour comment <work-folder> <file> <line> [--side new|old] --body <text>',
@@ -34,15 +34,15 @@ function requestedComment(args: string[]) {
   if (!/^[1-9]\d*$/.test(line)) throw new UserError(`"${line}" is not a line number, so ${refused}.\n${usage}`);
   if (body.trim() === '') throw new UserError(`--body must hold the comment's text, so ${refused}.\n${usage}`);
 
-  const { change, patch } = readCapture(path.resolve(folder));
+  const { change, diffs } = readChange(path.resolve(folder));
   // GitHub's old side is the pull request's base; a narrowed follow-up's is the earlier head.
   if (side === 'old' && change.followUp?.from !== undefined) {
     throw new UserError(
       `the old side of this follow-up tour is the earlier head ${change.followUp.since}, not the pull request's base, so ${refused}. Comment on a new line, or on the old side from a full tour.`,
     );
   }
-  const diff = cutPatch(patch, change.files).get(file);
-  if (!diff) throw new UserError(`${file} is not among the change's files (see change.json), so ${refused}.`);
+  const diff = diffs.get(file);
+  if (!diff) throw new UserError(`${printablePath(file)} is not among the change's files (see change.json), so ${refused}.`);
   const anchor = { file, line: Number(line), side } as const;
   // GitHub takes line comments only on lines its diff shows.
   const misplaced = misplacedAnchor(anchor, diff);
@@ -54,11 +54,9 @@ function requestedComment(args: string[]) {
 export function comment(args: string[]): void {
   const { change, file, line, side, body } = requestedComment(args);
 
-  const pullRequest = freshPullRequest<PendingReviews>(
-    change,
-    refused,
-    'reviews(states: [PENDING], first: 100) { nodes { id viewerDidAuthor } }',
-  );
+  const pullRequest = freshPullRequest<PendingReviews>(change, refused, {
+    fields: 'reviews(states: [PENDING], first: 100) { nodes { id viewerDidAuthor } }',
+  });
   // Pending reviews are visible only to their author; GitHub allows one per reviewer.
   const pending = pullRequest.reviews.nodes.find((review) => review.viewerDidAuthor);
   const thread = { path: file, line, side: side === 'old' ? 'LEFT' : 'RIGHT', body };
@@ -86,11 +84,12 @@ export function comment(args: string[]): void {
   }
 
   const number = change.pullRequest?.number;
+  const where = `${printablePath(file)}, ${side} line ${line}`;
   console.log(
     [
       pending
-        ? `Added a comment on ${file}, ${side} line ${line}, to your pending review on pull request #${number}.`
-        : `Started your pending review on pull request #${number} with a comment on ${file}, ${side} line ${line}.`,
+        ? `Added a comment on ${where}, to your pending review on pull request #${number}.`
+        : `Started your pending review on pull request #${number} with a comment on ${where}.`,
       `It stays pending: only you can see it until you submit the review yourself on GitHub.`,
     ].join('\n'),
   );

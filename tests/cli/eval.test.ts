@@ -8,6 +8,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeDifft } from '../support/difftastic.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
+import { filesOf, workFolder } from '../support/tour.ts';
 
 const evals = path.join(import.meta.dirname, '../../evals/review-tour');
 
@@ -17,8 +18,6 @@ beforeEach(() => {
 });
 afterEach(() => sandbox.cleanup());
 
-type File = { path: string; proofs?: string[]; generated?: string };
-
 /** Builds the fixture into the sandbox and captures it with `prepare`, as the agent would. */
 function prepareFixture(): { repo: string; folder: string } {
   const repo = path.join(sandbox.root, 'shop');
@@ -26,12 +25,7 @@ function prepareFixture(): { repo: string; folder: string } {
   assert.equal(built.status, 0, built.stderr);
   const prepared = sandbox.run(['prepare', 'feature', '--base', 'trunk'], { cwd: repo });
   assert.equal(prepared.status, 0, prepared.stderr);
-  return { repo, folder: path.join(sandbox.tmp, 'review-tour', 'shop-feature') };
-}
-
-function filesOf(folder: string): Map<string, File> {
-  const change = JSON.parse(fs.readFileSync(path.join(folder, 'change.json'), 'utf8'));
-  return new Map(change.files.map((file: File) => [file.path, file]));
+  return { repo, folder: workFolder(sandbox, 'feature', 'shop') };
 }
 
 test('the fixture holds a cross-file move, a rename, a reformat, a generated file, wiring and a hidden behaviour change', () => {
@@ -228,7 +222,7 @@ test('the grader fails a run whose final plan no longer renders, and one where p
   writePlan(folder, { ...soundPlan, intent: undefined });
 
   const edited = grade(folder);
-  const unprepared = grade(path.join(sandbox.tmp, 'review-tour', 'shop-elsewhere'));
+  const unprepared = grade(workFolder(sandbox, 'elsewhere', 'shop'));
 
   assert.equal(edited.status, 1);
   assert.match(
@@ -241,8 +235,8 @@ test('the grader fails a run whose final plan no longer renders, and one where p
 
 /**
  * Puts a fake agent on PATH. Like a real one, it finds the skill where the
- * harness installed it, runs prepare, writes a tour plan and renders it: the
- * plan of its Nth call is `plans[N - 1]`.
+ * harness installed it, runs prepare, writes a tour plan and renders it with
+ * `--open`, as SKILL.md says: the plan of its Nth call is `plans[N - 1]`.
  */
 function fakeAgent(name: string, skills: string, plans: object[]) {
   const plansFile = path.join(sandbox.root, `${name}-plans.json`);
@@ -258,7 +252,7 @@ const cli = path.resolve(${JSON.stringify(skills)}, 'review-tour/scripts/review-
 const prepared = execFileSync(process.execPath, [cli, 'prepare', 'feature', '--base', 'trunk'], { encoding: 'utf8' });
 const folder = /^Work folder: (.*)$/m.exec(prepared)[1];
 fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(plan));
-execFileSync(process.execPath, [cli, 'render', folder], { stdio: 'inherit' });
+execFileSync(process.execPath, [cli, 'render', folder, '--open'], { stdio: 'inherit' });
 `,
   );
 }
@@ -315,6 +309,29 @@ test('the harness runs Codex or OpenCode on request, with the skill where they f
   const [openCodeArgs] = opencode.log();
   assert.equal(openCodeArgs[0], 'run');
   assert.match(openCodeArgs.at(-1) ?? '', /review-tour skill .*feature base trunk$/);
+});
+
+test('the harness installs the skill under .agents/skills, as npx skills add does, linked into .claude/skills for Claude Code', () => {
+  fakeAgent('claude', '.claude/skills', [soundPlan]);
+
+  const result = runHarness(['--runs', '1']);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const shop = path.join(/^logs: (.*)$/m.exec(result.stdout)?.[1] ?? '', 'run-1', 'shop');
+  assert.ok(fs.existsSync(path.join(shop, '.agents/skills/review-tour/SKILL.md')));
+  const linked = path.join(shop, '.claude/skills/review-tour');
+  assert.ok(fs.lstatSync(linked).isSymbolicLink());
+  assert.equal(fs.realpathSync(linked), fs.realpathSync(path.join(shop, '.agents/skills/review-tour')));
+});
+
+test('the harness keeps every run from opening a browser tab', () => {
+  fakeAgent('claude', '.claude/skills', [soundPlan, soundPlan]);
+  const openers = [sandbox.fake('open'), sandbox.fake('xdg-open')];
+
+  const result = runHarness(['--runs', '2']);
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(openers.flatMap((opener) => opener.log()), []);
 });
 
 test('the harness refuses to run in CI, where every run would be a paid model call', () => {

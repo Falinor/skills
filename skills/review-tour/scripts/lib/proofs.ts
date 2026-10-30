@@ -3,32 +3,56 @@
 // anything, so proven files never reach the agent.
 import path from 'node:path';
 import { hasDifftastic, sameSyntax } from './difftastic.ts';
-import { listMoves, listRawEntries, readBlobs, type FileMoves, type RawEntry } from './git.ts';
-import type { ChangedFile, Proof } from './work-folder.ts';
+import { listMoves, readBlobs, type FileMoves, type ListedFile, type Range, type RawEntry } from './git.ts';
+import type { Proof } from './work-folder.ts';
 
 /** One changed file as the provers see it. */
-type Candidate = { file: ChangedFile; entry: RawEntry };
+type Candidate = ListedFile;
 
 /** The range under proof and its changed files, in patch order. */
-type Range = { root: string; from: string; to: string; candidates: Candidate[] };
+type Proving = Range & { candidates: Candidate[] };
 
 /** The indexes of the candidates a proof holds for. */
-type Prover = (range: Range) => Set<number>;
+type Prover = (proving: Proving) => Set<number>;
 
 const isRegular = (mode: string) => mode === '100644' || mode === '100755';
 
+/** The file's path before and after the change; the same one unless it was renamed. */
+const pathsOf = (entry: RawEntry) => [entry.oldPath ?? entry.path, entry.path];
+
+/** A text file edited in place or renamed with edits, a regular file on both sides with its mode kept. */
+const editedText = ({ file, entry }: Candidate) =>
+  (entry.status === 'M' || entry.status === 'R') &&
+  entry.oldBlob !== entry.newBlob &&
+  file.additions !== null &&
+  isRegular(entry.oldMode) &&
+  entry.oldMode === entry.newMode;
+
+/** Both versions of each entry's file, in one read. */
+function readVersions(root: string, entries: RawEntry[]): { before: string; after: string }[] {
+  const blobs = readBlobs(root, entries.flatMap((entry) => [entry.oldBlob, entry.newBlob]));
+  return entries.map((entry) => ({ before: blobs.get(entry.oldBlob) as string, after: blobs.get(entry.newBlob) as string }));
+}
+
 /** Renamed at 100% similarity, mode unchanged. */
 const pureRename: Prover = ({ candidates }) =>
-  indexesWhere(candidates, ({ entry }) => entry.status === 'R100' && entry.oldMode === entry.newMode);
+  indexesWhere(candidates, ({ entry }) => entry.status === 'R' && entry.similarity === 100 && entry.oldMode === entry.newMode);
+
+const extensionOf = (file: string) => path.extname(file).slice(1).toLowerCase();
+
+// Programming languages where a moved definition keeps its meaning, outside
+// top-level statements run for their side effects (a known residual hole).
+// Styles, data, configuration and query files are never proven moved: where a
+// rule or a setting sits changes what it does.
+const codeLanguages = 'c h cc cpp cxx hh hpp hxx cs java kt kts go rs swift dart js mjs cjs jsx ts mts cts tsx'.split(' ');
+const inCodeLanguage = (file: string) => codeLanguages.includes(extensionOf(file));
 
 // Languages where whitespace at the edges of a line, and blank lines, carry
 // no meaning outside multi-line string literals (a known residual hole).
 // Anything else, Python, YAML, Makefiles, Markdown, shell or unknown, is never
 // proven whitespace only.
-const whitespaceFree = new Set(
-  'c h cc cpp cxx hh hpp hxx cs java kt kts go rs swift dart js mjs cjs jsx ts mts cts tsx json jsonc css scss less sql'.split(' '),
-);
-const inWhitespaceFreeLanguage = (file: string) => whitespaceFree.has(path.extname(file).slice(1).toLowerCase());
+const whitespaceFree = new Set([...codeLanguages, ...'json jsonc css scss less sql'.split(' ')]);
+const inWhitespaceFreeLanguage = (file: string) => whitespaceFree.has(extensionOf(file));
 
 /** The lines that remain once whitespace at line edges and blank lines are dropped; inner whitespace is kept. */
 const significantLines = (text: string) =>
@@ -39,37 +63,42 @@ const significantLines = (text: string) =>
 
 /** Only whitespace at line edges and blank lines differ, in a language where they mean nothing. */
 const whitespaceOnly: Prover = ({ root, candidates }) => {
-  const eligible = indexesWhere(
-    candidates,
-    ({ file, entry }) =>
-      (entry.status === 'M' || entry.status.startsWith('R')) &&
-      entry.oldBlob !== entry.newBlob &&
-      file.additions !== null &&
-      isRegular(entry.oldMode) &&
-      entry.oldMode === entry.newMode &&
-      [entry.oldPath ?? entry.path, entry.path].every(inWhitespaceFreeLanguage),
-  );
-  const blobs = readBlobs(root, [...eligible].flatMap((index) => [candidates[index].entry.oldBlob, candidates[index].entry.newBlob]));
+  const eligible = [
+    ...indexesWhere(candidates, (candidate) => editedText(candidate) && pathsOf(candidate.entry).every(inWhitespaceFreeLanguage)),
+  ];
+  const versions = readVersions(root, eligible.map((index) => candidates[index].entry));
   return new Set(
-    [...eligible].filter((index) => {
-      const before = significantLines(blobs.get(candidates[index].entry.oldBlob) as string);
-      const after = significantLines(blobs.get(candidates[index].entry.newBlob) as string);
-      return before.length === after.length && before.every((line, at) => line === after[at]);
+    eligible.filter((_, at) => {
+      const before = significantLines(versions[at].before);
+      const after = significantLines(versions[at].after);
+      return before.length === after.length && before.every((line, index) => line === after[index]);
     }),
   );
 };
 
-// A moved block must leave one file and land in a different one. A block
-// that also lands in its own file may be a reorder, which changes behaviour,
-// so it proves nothing, even when the same lines also move elsewhere.
+// A moved block must leave one file and land in a different one, once each,
+// between files of a programming language. A block that also lands in its own
+// file may be a reorder, and one that lands twice is a copy: both change
+// behaviour, so they prove nothing.
 const enclose = (lines: string[]) => `\n${lines.join('\n')}\n`;
 
-/** Every changed line moved, each moved block found in another file's opposite runs and in none of its own. */
-const pureMove: Prover = ({ root, from, to, candidates }) => {
-  const moves = listMoves(root, from, to);
+/** How many times `block` occurs in `text`, overlaps included. */
+function occurrences(text: string, block: string): number {
+  let count = 0;
+  for (let at = text.indexOf(block); at !== -1; at = text.indexOf(block, at + 1)) count++;
+  return count;
+}
+
+/** Every changed line moved, each moved block removed once and added once, into or out of another code file. */
+const pureMove: Prover = ({ candidates, ...range }) => {
+  const moves = listMoves(range);
   const runsOf = moves.map((file) => file.runs.map((run) => ({ sign: run.sign, text: enclose(run.blocks.flat()) })));
-  const landsIn = (index: number, sign: string, block: string) =>
-    runsOf[index].some((run) => run.sign !== sign && run.text.includes(block));
+  const isCode = candidates.map(({ entry }) => pathsOf(entry).every(inCodeLanguage));
+  /** Where `block` occurs among the runs of sign `sign`, one file index per occurrence. */
+  const foundIn = (sign: string, block: string) =>
+    runsOf.flatMap((runs, index) =>
+      runs.flatMap((run) => (run.sign === sign ? Array<number>(occurrences(run.text, block)).fill(index) : [])),
+    );
   const movedOnly = ({ file, entry }: Candidate, { unmoved, runs }: FileMoves) =>
     unmoved === 0 &&
     runs.length > 0 &&
@@ -78,11 +107,15 @@ const pureMove: Prover = ({ root, from, to, candidates }) => {
   return indexesWhere(
     candidates,
     (candidate, index) =>
+      isCode[index] &&
       movedOnly(candidate, moves[index]) &&
       moves[index].runs.every(({ sign, blocks }) =>
         blocks.every((block) => {
           const text = enclose(block);
-          return !landsIn(index, sign, text) && moves.some((_, other) => other !== index && landsIn(other, sign, text));
+          const opposite = foundIn(sign === '+' ? '-' : '+', text);
+          return (
+            foundIn(sign, text).length === 1 && opposite.length === 1 && opposite[0] !== index && isCode[opposite[0]]
+          );
         }),
       ),
   );
@@ -95,25 +128,14 @@ const languageKey = (file: string) => path.extname(file).toLowerCase() || path.b
 const syntaxIdentical: Prover = ({ root, candidates }) => {
   if (!hasDifftastic()) return new Set();
   const eligible = [
-    ...indexesWhere(
-      candidates,
-      ({ file, entry }) =>
-        (entry.status === 'M' ||
-          (entry.status.startsWith('R') && languageKey(entry.oldPath ?? entry.path) === languageKey(entry.path))) &&
-        entry.oldBlob !== entry.newBlob &&
-        file.additions !== null &&
-        isRegular(entry.oldMode) &&
-        entry.oldMode === entry.newMode,
-    ),
-  ];
-  const blobs = readBlobs(root, eligible.flatMap((index) => [candidates[index].entry.oldBlob, candidates[index].entry.newBlob]));
-  // A rename is compared under its new name, so both versions parse as one language.
-  const same = sameSyntax(
-    eligible.map((index) => {
-      const { entry } = candidates[index];
-      return { name: path.basename(entry.path), before: blobs.get(entry.oldBlob) as string, after: blobs.get(entry.newBlob) as string };
+    ...indexesWhere(candidates, (candidate) => {
+      const [before, after] = pathsOf(candidate.entry);
+      return editedText(candidate) && languageKey(before) === languageKey(after);
     }),
-  );
+  ];
+  const versions = readVersions(root, eligible.map((index) => candidates[index].entry));
+  // A rename is compared under its new name, so both versions parse as one language.
+  const same = sameSyntax(eligible.map((index, at) => ({ name: path.basename(candidates[index].entry.path), ...versions[at] })));
   return new Set(eligible.filter((_, at) => same[at]));
 };
 
@@ -128,13 +150,11 @@ const provers: [Proof, Prover][] = [
   ['syntax-identical', syntaxIdentical],
 ];
 
-/** `files` with the proofs each one carries; `files` must list the range `from`..`to` in patch order. */
-export function proveFiles(root: string, from: string, to: string, files: ChangedFile[]): ChangedFile[] {
-  const entries = listRawEntries(root, from, to);
-  const candidates = files.map((file, index) => ({ file, entry: entries[index] }));
-  const found = provers.map(([proof, prove]) => [proof, prove({ root, from, to, candidates })] as const);
-  return files.map((file, index) => {
+/** `listed` with the proofs each file carries; `listed` must list `range` in patch order. */
+export function proveFiles(range: Range, listed: ListedFile[]): ListedFile[] {
+  const found = provers.map(([proof, prove]) => [proof, prove({ ...range, candidates: listed })] as const);
+  return listed.map(({ file, entry }, index) => {
     const proofs = found.filter(([, proven]) => proven.has(index)).map(([proof]) => proof);
-    return proofs.length > 0 ? { ...file, proofs } : file;
+    return { file: proofs.length > 0 ? { ...file, proofs } : file, entry };
   });
 }

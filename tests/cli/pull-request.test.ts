@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeGh, pullRequestRepo, pullRequestUrl } from '../support/github.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
+import { workFolder } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
@@ -11,10 +12,10 @@ beforeEach(() => {
 });
 afterEach(() => sandbox.cleanup());
 
-const workFolder = () => path.join(sandbox.tmp, 'review-tour', 'project-PR-7');
+const prepared = () => workFolder(sandbox, 'PR-7');
 
 function readWorkFile(name: string) {
-  return JSON.parse(fs.readFileSync(path.join(workFolder(), name), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(prepared(), name), 'utf8'));
 }
 
 /**
@@ -101,7 +102,7 @@ test("relays gh's message when it can't find the pull request", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Could not resolve to a PullRequest/);
   assert.doesNotMatch(result.stderr, /\n\s+at /);
-  assert.ok(!fs.existsSync(workFolder()));
+  assert.ok(!fs.existsSync(prepared()));
 });
 
 test('refuses a pull request whose head moved while it was fetched', () => {
@@ -112,7 +113,7 @@ test('refuses a pull request whose head moved while it was fetched', () => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /moved while it was fetched; run prepare again/);
-  assert.ok(!fs.existsSync(workFolder()));
+  assert.ok(!fs.existsSync(prepared()));
 });
 
 const prTemplateBody = [

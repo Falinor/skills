@@ -5,7 +5,8 @@
 import { commitOf, tryGit } from './git.ts';
 import type { FollowUp } from './work-folder.ts';
 
-type Tour = {
+/** What `prepare` knows when it works out a follow-up tour's range. */
+type FollowUpInputs = {
   /** The earlier tour's head, as the reviewer gave it. */
   since: string;
   target: string;
@@ -17,7 +18,7 @@ type Tour = {
 const fullChange = (since: string, fallback: string): FollowUp => ({ since, fallback });
 
 /** The range of a follow-up tour: from the earlier head, or from its replay when the base was merged in since. */
-export function followUpRange(root: string, { since, target, head, baseCommit, mergeBase }: Tour): FollowUp {
+export function followUpRange(root: string, { since, target, head, baseCommit, mergeBase }: FollowUpInputs): FollowUp {
   const earlier = commitOf(root, since);
   if (!earlier) return fullChange(since, `${since} names no commit here; a force-push has likely dropped it`);
   if (tryGit(root, ['merge-base', '--is-ancestor', earlier, head]).status !== 0) {

@@ -30,8 +30,11 @@ export function followsPrTemplate(body: string): boolean {
   return /^##\s+Summary\s*$/m.test(body) && /^##\s+Merge Danger\s*$/m.test(body) && /^\*\*Door:\*\*/m.test(body);
 }
 
-/** Host, owner and name of the repository a pull request URL belongs to. */
-export function repositoryOf(url: string): { host: string; owner: string; name: string } {
+/** Where a repository lives on GitHub (or a GitHub Enterprise host). */
+export type GitHubRepository = { host: string; owner: string; name: string };
+
+/** The repository a pull request URL belongs to. */
+export function repositoryOf(url: string): GitHubRepository {
   const match = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/\d+$/.exec(url);
   if (!match) throw new UserError(`gh returned an unexpected pull request URL: ${url}`);
   const [, host, owner, name] = match;
@@ -42,7 +45,7 @@ export function repositoryOf(url: string): { host: string; owner: string; name: 
  * The local remote pointing at `repository`, so fetching reuses its
  * credentials (SSH or HTTPS); else the repository's HTTPS URL.
  */
-function remoteFor(root: string, repository: { host: string; owner: string; name: string }): string {
+function remoteFor(root: string, repository: GitHubRepository): string {
   const wanted = `${repository.host}/${repository.owner}/${repository.name}`.toLowerCase();
   const entries = tryGit(root, ['config', '-z', '--get-regexp', '^remote\\..*\\.url$']).stdout.split('\0');
   for (const entry of entries) {

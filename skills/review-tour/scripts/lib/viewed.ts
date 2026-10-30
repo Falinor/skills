@@ -5,11 +5,11 @@ import { parseCommandArgs } from './args.ts';
 import { UserError } from './errors.ts';
 import { graphql } from './gh.ts';
 import { mechanicalBatch } from './mechanical-batch.ts';
-import { cutPatch } from './patch.ts';
-import { validatePlan, type TourPlan } from './plan.ts';
-import { readPlan } from './render.ts';
-import { freshPullRequest } from './stale-tour.ts';
-import { readCapture, type Change } from './work-folder.ts';
+import type { TourPlan } from './plan.ts';
+import { printablePath } from './printable.ts';
+import { freshPullRequest, type FreshPullRequest } from './stale-tour.ts';
+import { readTour } from './tour.ts';
+import type { Change } from './work-folder.ts';
 
 const usage = [
   'usage: review-tour viewed <work-folder> <steps|mechanical>',
@@ -47,12 +47,10 @@ function readViewedStates(change: Change) {
   const states = new Map<string, ChangedFileState['viewerViewedState']>();
   let cursor: string | null = null;
   for (;;) {
-    const after: string = cursor === null ? '' : `, after: ${JSON.stringify(cursor)}`;
-    const page = freshPullRequest<FilesPage>(
-      change,
-      'nothing was ticked',
-      `files(first: 100${after}) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }`,
-    );
+    const page: FreshPullRequest & FilesPage = freshPullRequest<FilesPage>(change, 'nothing was ticked', {
+      fields: 'files(first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { path viewerViewedState } }',
+      variables: { after: { type: 'String', value: cursor } },
+    });
     for (const node of page.files.nodes) states.set(node.path, node.viewerViewedState);
     const { hasNextPage, endCursor } = page.files.pageInfo;
     if (!hasNextPage || endCursor === null) return { host: page.host, id: page.id, states };
@@ -61,14 +59,41 @@ function readViewedStates(change: Change) {
 }
 
 const count = (files: string[]) => (files.length === 1 ? '1 file' : `${files.length} files`);
-const listed = (files: string[]) => files.map((file) => `  ${file}`);
+const listed = (files: string[]) => files.map((file) => `  ${printablePath(file)}`);
+
+/** Files per mutation, so a failure leaves at most this many in doubt. */
+const batchSize = 25;
+
+/** Ticks `files` batch by batch; when GitHub fails, prints what it ticked before and stops, naming the rest. */
+function tick(host: string, id: string, files: string[], number: number | undefined): void {
+  for (let start = 0; start < files.length; start += batchSize) {
+    const batch = files.slice(start, start + batchSize);
+    const declarations = batch.map((_, index) => `, $p${index}: String!`).join('');
+    const marks = batch
+      .map((_, index) => `p${index}: markFileAsViewed(input: { pullRequestId: $pr, path: $p${index} }) { clientMutationId }`)
+      .join('\n  ');
+    try {
+      graphql(host, `mutation($pr: ID!${declarations}) {\n  ${marks}\n}`, {
+        pr: id,
+        ...Object.fromEntries(batch.map((file, index) => [`p${index}`, file])),
+      });
+    } catch (error) {
+      if (!(error instanceof UserError)) throw error;
+      const ticked = files.slice(0, start);
+      if (ticked.length > 0) {
+        console.log([`Ticked as Viewed on pull request #${number} before GitHub failed: ${count(ticked)}`, ...listed(ticked)].join('\n'));
+      }
+      const left = files.slice(start);
+      throw new UserError([error.message, `GitHub failed while ticking, so these may not be ticked: ${count(left)}`, ...listed(left)].join('\n'));
+    }
+  }
+}
 
 /** Ticks the chosen files as Viewed on the pull request and prints what it ticked. */
 export function viewed(args: string[]): void {
   const { positionals } = parseCommandArgs(args, {}, usage, 2);
   const folder = path.resolve(positionals[0]);
-  const { change, patch } = readCapture(folder);
-  const plan = validatePlan(readPlan(folder), change, cutPatch(patch, change.files));
+  const { change, plan } = readTour(folder);
   const batch = positionals[1] === 'mechanical' ? mechanicalBatch(plan, change) : undefined;
   const files = batch ? batch.proven : chosenFiles(plan, positionals[1]);
 
@@ -82,18 +107,8 @@ export function viewed(args: string[]): void {
   const toTick = listedPaths.filter((file) => states.get(file) !== 'VIEWED');
   const alreadyViewed = listedPaths.filter((file) => states.get(file) === 'VIEWED');
 
-  if (toTick.length > 0) {
-    const declarations = toTick.map((_, index) => `, $p${index}: String!`).join('');
-    const marks = toTick
-      .map((_, index) => `p${index}: markFileAsViewed(input: { pullRequestId: $pr, path: $p${index} }) { clientMutationId }`)
-      .join('\n  ');
-    graphql(host, `mutation($pr: ID!${declarations}) {\n  ${marks}\n}`, {
-      pr: id,
-      ...Object.fromEntries(toTick.map((file, index) => [`p${index}`, file])),
-    });
-  }
-
   const number = change.pullRequest?.number;
+  tick(host, id, toTick, number);
   console.log(
     [
       ...(toTick.length > 0

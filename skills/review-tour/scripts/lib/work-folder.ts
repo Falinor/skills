@@ -5,12 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { UserError } from './errors.ts';
 
+/** git's status letter: added, copied, deleted, modified, renamed, type changed, unmerged, unknown. */
+export type FileStatus = 'A' | 'C' | 'D' | 'M' | 'R' | 'T' | 'U' | 'X';
+
 export type ChangedFile = {
   path: string;
   /** Set for renames and copies. */
   oldPath?: string;
-  /** git's status letter: A, M, D, R, C, T. */
-  status: string;
+  status: FileStatus;
   /** null for binary files. */
   additions: number | null;
   deletions: number | null;
@@ -30,9 +32,19 @@ export const proofLabels: Record<Proof, string> = {
   'syntax-identical': 'syntax-identical',
 };
 
+/** The file carries at least one mechanical proof. */
+export function isProven(file: ChangedFile): boolean {
+  return (file.proofs?.length ?? 0) > 0;
+}
+
+/** The file's proofs as the reviewer reads them: `pure rename, whitespace only`. */
+export function describeProofs(file: ChangedFile): string {
+  return (file.proofs ?? []).map((proof) => proofLabels[proof]).join(', ');
+}
+
 /** A file may sit in the mechanical tier only with a proof, or when the base declares it generated. */
 export function mayBeMechanical(file: ChangedFile): boolean {
-  return (file.proofs?.length ?? 0) > 0 || file.generated === 'base';
+  return isProven(file) || file.generated === 'base';
 }
 
 export type Change = {
@@ -94,6 +106,17 @@ export function writeCapture(folder: string, change: Change, patch: string): voi
 
 export function writePullRequestText(folder: string, text: PullRequestText): void {
   fs.writeFileSync(path.join(folder, workFolderFiles.pullRequest), `${JSON.stringify(text, null, 2)}\n`);
+}
+
+/** The tour plan the agent wrote in `folder`, as parsed JSON, not yet validated. */
+export function readPlan(folder: string): unknown {
+  const file = path.join(folder, workFolderFiles.plan);
+  if (!fs.existsSync(file)) throw new UserError(`no tour plan at ${file}; write it first.`);
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new UserError(`${workFolderFiles.plan} is not valid JSON: ${(error as Error).message}`);
+  }
 }
 
 /** What `prepare` captured in `folder`. */

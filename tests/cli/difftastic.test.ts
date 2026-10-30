@@ -1,23 +1,15 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { fakeDifft, realDifftDir } from '../support/difftastic.ts';
 import { makeSandbox, type Sandbox } from '../support/sandbox.ts';
-import { prepareChange } from '../support/tour.ts';
+import { filesOf, prepareChange } from '../support/tour.ts';
 
 let sandbox: Sandbox;
 beforeEach(() => {
   sandbox = makeSandbox();
 });
 afterEach(() => sandbox.cleanup());
-
-type File = { path: string; proofs?: string[] };
-
-function filesOf(folder: string): Map<string, File> {
-  const change = JSON.parse(fs.readFileSync(path.join(folder, 'change.json'), 'utf8'));
-  return new Map(change.files.map((file: File) => [file.path, file]));
-}
 
 // A formatter reflow: lines joined and split, spaces inside lines changed.
 const compact = "export const point = { x: 1, y: 2 };\nexport function area(a: number,b: number) { return a*b; }\n";

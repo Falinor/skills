@@ -15,12 +15,13 @@ export const tierLabels: Record<Tier, string> = {
 };
 
 export const calloutTags = ['Subtle', 'Breaking', 'Security', 'Perf', 'Concurrency', 'One-way door'] as const;
+export type CalloutTag = (typeof calloutTags)[number];
 
 /** One concrete input followed through the old and the new code, one entry per point of the run. */
 export type Trace = { input: string; old: string[]; new: string[] };
 
 /** A tagged warning anchored to one line of a file's diff, on its old or new side. */
-export type Callout = { file: string; line: number; side: 'old' | 'new'; tag: string; text: string };
+export type Callout = { file: string; line: number; side: 'old' | 'new'; tag: CalloutTag; text: string };
 
 export type Step = {
   title: string;
@@ -47,12 +48,17 @@ export type Intent = {
 
 export type TourPlan = { intent: Intent; steps: Step[] };
 
+export const doors: Record<Intent['mergeDanger']['door'], string> = { 'one-way': 'One-way door', 'two-way': 'Two-way door' };
+
+/** What a rule checks the plan against: the captured change and its per-file diffs. */
+type Captured = { change: Change; diffs: Map<string, FileDiff> };
+
 function listSteps(numbers: number[]): string {
   return `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
 }
 
 /** Every file of the change sits in exactly one step, and nothing else does. */
-function checkCoverage(plan: TourPlan, change: Change): string[] {
+function checkCoverage(plan: TourPlan, { change }: Captured): string[] {
   const stepsOf = new Map<string, number[]>(change.files.map((file) => [file.path, []]));
   const violations: string[] = [];
   plan.steps.forEach((step, index) => {
@@ -88,7 +94,7 @@ export function misplacedAnchor({ file, line, side }: Pick<Callout, 'file' | 'li
 }
 
 /** Every callout carries a known tag and sits on a line its step's diff shows, on the side it names. */
-function checkCallouts(plan: TourPlan, _change: Change, diffs: Map<string, FileDiff>): string[] {
+function checkCallouts(plan: TourPlan, { diffs }: Captured): string[] {
   return plan.steps.flatMap((step, stepIndex) =>
     (step.callouts ?? []).flatMap((callout, index) => {
       const at = `step ${stepIndex + 1}, callout ${index + 1}`;
@@ -119,7 +125,7 @@ function checkTierOrder(plan: TourPlan): string[] {
  * Only proven or base-declared generated files sit in the mechanical tier,
  * shown without diffs, so without callouts; unproven ones stay in core logic, flagged.
  */
-function checkMechanical(plan: TourPlan, change: Change): string[] {
+function checkMechanical(plan: TourPlan, { change }: Captured): string[] {
   const byPath = new Map(change.files.map((file) => [file.path, file]));
   return plan.steps.flatMap((step, index) => {
     const at = `step ${index + 1}`;
@@ -147,7 +153,7 @@ function checkMechanical(plan: TourPlan, change: Change): string[] {
   });
 }
 
-type Rule = (plan: TourPlan, change: Change, diffs: Map<string, FileDiff>) => string[];
+type Rule = (plan: TourPlan, captured: Captured) => string[];
 
 /** Rules checked once the plan is well formed. */
 const rules: Rule[] = [checkCoverage, checkCallouts, checkTierOrder, checkMechanical];
@@ -236,7 +242,7 @@ function checkIntent(raw: unknown): string[] {
 /** The plan, once it is well formed and obeys every rule; otherwise stops with every violation. */
 export function validatePlan(raw: unknown, change: Change, diffs: Map<string, FileDiff>): TourPlan {
   const shape = [...checkIntent(raw), ...checkShape(raw)];
-  const violations = shape.length > 0 ? shape : rules.flatMap((rule) => rule(raw as TourPlan, change, diffs));
+  const violations = shape.length > 0 ? shape : rules.flatMap((rule) => rule(raw as TourPlan, { change, diffs }));
   if (violations.length > 0) {
     throw new UserError(`the tour plan is invalid:\n${violations.map((violation) => `- ${violation}`).join('\n')}`);
   }
