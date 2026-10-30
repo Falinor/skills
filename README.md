@@ -8,6 +8,8 @@ Agent skills in the [Agent Skills](https://agentskills.io) format. They run in C
 
 Steps come in tiers: core logic, then wiring, then mechanical. Only files with a mechanical proof (from git: pure move between files, pure rename, whitespace-only change outside whitespace-sensitive languages; from [difftastic](https://github.com/Wilfred/difftastic) when installed: syntax-identical, an unchanged syntax tree) reach the mechanical tier, shown as a table rather than diffs; files the base declares generated are listed apart as declared, not proven.
 
+On the page, a sidebar lists the steps by tier and shows how far you have read; `j` and `k` move to the next and previous step, each at its own `#step-N` link. It follows the system's light or dark theme, and a switch picks the other one. Its only script navigates and switches themes; the page's Content-Security-Policy allows that script by hash and nothing else.
+
 A pull request is fetched through `gh`, with nothing to check out by hand. The base is the one you give, else the pull request's base, else the remote's default branch; the tool never assumes `main`.
 
 After the author addresses feedback, `since <sha>` (the earlier tour's head) gives a **follow-up tour** of only what changed since. If the author merged the base in meanwhile, the base's changes are left out. If that head was force-pushed away, the tour covers the full change and says why.
