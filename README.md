@@ -26,7 +26,7 @@ npx skills add Falinor/skills --skill review-tour
 
 Requires Node 24.12+ and git (gh for GitHub pull requests). The skill runs only when you invoke it.
 
-Optional: difftastic (`brew install difftastic` or `cargo install --locked difftastic`) lets the tour prove formatter reflows and re-indentation syntax-identical. Without it the tour still works; the tool never installs it.
+Optional: difftastic (`brew install difftastic` or `cargo install --locked difftastic`) lets the tour prove formatter reflows and re-indentation syntax-identical. The tour asks about it before it starts and still works without it; the tool never installs it.
 
 ## Development
 

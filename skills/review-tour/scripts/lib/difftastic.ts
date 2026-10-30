@@ -9,9 +9,9 @@ import path from 'node:path';
 /** Two versions of one file; `name` is its file name, from which difftastic guesses the language. */
 export type Versions = { name: string; before: string; after: string };
 
-/** What `prepare` says when difftastic is missing; the tour carries on without the proof. */
+/** What `prepare` says when difftastic is missing; the tour carries on without the proof, and `check` already asked about installing it. */
 export const difftasticHint =
-  'difftastic is not on PATH, so no file can be proven syntax-identical (a reformat stays out of the mechanical tier). Tell the reviewer once that installing it gives that proof: `brew install difftastic` or `cargo install --locked difftastic`.';
+  'difftastic is not on PATH, so no file was proven syntax-identical (a reformat stays out of the mechanical tier).';
 
 let installed: boolean | undefined;
 
