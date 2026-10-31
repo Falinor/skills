@@ -9,3 +9,7 @@ Evals run through our own harness (`evals/run.sh --agent claude|codex|opencode`)
 ## Amendment (2026-10-29): eval paths
 
 The decision stands; only the paths above changed when the first eval landed. Each skill has its own harness, `evals/<skill>/run.sh --agent claude|codex|opencode` (for this skill `evals/review-tour/run.sh`), not one shared `evals/run.sh`. It installs the skill as `npx skills add` does: under `.agents/skills/`, linked into `.claude/skills/` for Claude Code.
+
+## Amendment (2026-10-30): vendored code
+
+A script may also use third-party code copied into the skill, since an install copies it with the rest: review-tour vendors highlight.js under `scripts/vendor/` for the page's syntax highlighting, with its licence and the version it was copied from. Vendored code stays a single pinned file that loads with no install or build step, and its licence must allow redistribution under MIT.

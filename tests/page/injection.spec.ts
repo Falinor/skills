@@ -39,5 +39,7 @@ test('hostile text in prose and diffs stays inert', async ({ page }) => {
     ),
   );
   expect(handlers).toEqual([]);
+  // The hostile HTML file went through the highlighter, which kept every payload as text.
+  await expect(page.locator('.diff .hljs-tag').first()).toBeVisible();
   for (const payload of payloads) await expect(page.getByText(payload).first()).toBeVisible();
 });
