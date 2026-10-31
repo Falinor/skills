@@ -30,7 +30,7 @@ test('with difftastic, proves a formatter reflow syntax-identical', () => {
   for (const args of checks) assert.deepEqual(args.slice(0, 2), ['--check-only', '--exit-code']);
 });
 
-test('without difftastic, carries on, says once how to install it and installs nothing', () => {
+test('without difftastic, carries on, says once the proof is missing and installs nothing', () => {
   const installers = ['brew', 'cargo', 'curl'].map((name) => sandbox.fake(name));
   const { repo, folder } = prepareChange(sandbox, {
     trunk: { 'src/shape.ts': compact },
@@ -42,8 +42,6 @@ test('without difftastic, carries on, says once how to install it and installs n
   assert.equal(result.status, 0, result.stderr);
   assert.equal(filesOf(folder).get('src/shape.ts')?.proofs, undefined);
   assert.equal(result.stdout.split('\n').filter((line) => /difftastic/i.test(line)).length, 1, result.stdout);
-  assert.match(result.stdout, /brew install difftastic/);
-  assert.match(result.stdout, /cargo install --locked difftastic/);
   for (const installer of installers) assert.deepEqual(installer.log(), []);
 });
 
