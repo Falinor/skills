@@ -16,17 +16,18 @@ import { describeProofs, isProven, type Change, type ChangedFile } from './work-
 // Colours are theme tokens: light by default, dark when the system asks for
 // it, and either one when the reader picks it with the theme switch.
 const lightTheme =
-  'color-scheme: light; --bg: #ffffff; --text: #1f2328; --muted: #59636e; --border: #d1d9e0; --surface: #f6f8fa; ' +
-  '--link: #0969da; --add: #dafbe1; --del: #ffebe9; --mark: #fff8c5; --mark-edge: #9a6700; --danger: #b42318; ' +
-  '--flag-bg: #fff3cd; --flag-text: #664d03; ' +
-  '--code-keyword: #cf222e; --code-string: #0a3069; --code-constant: #0550ae; --code-title: #6639ba; ' +
-  '--code-type: #953800; --code-tag: #116329; --code-comment: #59636e;';
+  'color-scheme: light; --bg: #fafafa; --text: #383a42; --muted: #5e6169; --border: #d4d5d9; --surface: #f0f0f1; ' +
+  '--link: #2f62d6; --add: #e3f4e1; --del: #fbe5e6; --mark: #fdf4d8; --mark-edge: #b07c00; --danger: #c22f22; ' +
+  '--flag-bg: #fcefc9; --flag-text: #6b4a00; ' +
+  '--code-keyword: #a626a4; --code-string: #357334; --code-constant: #8a5f00; --code-title: #2f62d6; ' +
+  '--code-type: #9a5b00; --code-tag: #b3301f; --code-comment: #5e6169;';
+// The dark theme is One Dark's palette, softer than near-black.
 const darkTheme =
-  'color-scheme: dark; --bg: #0d1117; --text: #e6edf3; --muted: #9198a1; --border: #3d444d; --surface: #151b23; ' +
-  '--link: #4493f8; --add: #12261e; --del: #25171c; --mark: #272115; --mark-edge: #d29922; --danger: #ff7b72; ' +
-  '--flag-bg: #3b2e0a; --flag-text: #e3b341; ' +
-  '--code-keyword: #ff7b72; --code-string: #a5d6ff; --code-constant: #79c0ff; --code-title: #d2a8ff; ' +
-  '--code-type: #ffa657; --code-tag: #7ee787; --code-comment: #9198a1;';
+  'color-scheme: dark; --bg: #282c34; --text: #abb2bf; --muted: #9da3ad; --border: #3e4451; --surface: #21252b; ' +
+  '--link: #61afef; --add: #2a3530; --del: #3a2c32; --mark: #35332a; --mark-edge: #e5c07b; --danger: #ef7b84; ' +
+  '--flag-bg: #4a4130; --flag-text: #e5c07b; ' +
+  '--code-keyword: #c983e0; --code-string: #98c379; --code-constant: #d19a66; --code-title: #61afef; ' +
+  '--code-type: #e5c07b; --code-tag: #ef7b84; --code-comment: #9da3ad;';
 
 const styles = `
 :root { ${lightTheme} }
@@ -96,7 +97,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .diff .line-comment { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 .diff .line-comment:hover { color: var(--link); text-decoration: underline; }
 .diff .draft td { background: var(--surface); padding: 0.5rem; font-family: system-ui, sans-serif; }
-.step-done { display: inline-block; margin-bottom: 0.5rem; }
+.step-done { display: inline-block; margin: 1rem 0; }
 `;
 
 // Navigation: j and k move to the next and previous step from the step being
@@ -447,10 +448,10 @@ function renderStep(step: Step, index: number, diffs: Map<string, FileDiff>, act
   return (
     `<section class="step" id="${id}" aria-labelledby="${id}-title">` +
     `<h3 id="${id}-title"><a href="#${id}">Step ${index + 1}</a> · ${escape(step.title)}</h3>` +
-    (actions ? `<label class="step-done"><input type="checkbox" class="step-done" data-step="${index + 1}"> Done</label>` : '') +
     `<div class="explanation">${markdown(step.explanation)}</div>` +
     renderAids(step) +
     body +
+    (actions ? `<label class="step-done"><input type="checkbox" class="step-done" data-step="${index + 1}"> Done</label>` : '') +
     `</section>`
   );
 }
