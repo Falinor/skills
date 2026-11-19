@@ -1,0 +1,97 @@
+// Throwaway world for driving the stand-up CLI from the outside: a temp root
+// whose private TMPDIR receives the work folders, and a fixed "today".
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+export const STAND_UP_CLI = path.join(import.meta.dirname, '../../skills/stand-up/scripts/stand-up.mjs');
+
+export type RunResult = { status: number | null; stdout: string; stderr: string };
+
+export type StandUpSandbox = {
+  root: string;
+  /** TMPDIR seen by the CLI: work folders are created under it. */
+  tmp: string;
+  /** Run the CLI with the sandbox environment. */
+  run: (args: string[], env?: NodeJS.ProcessEnv) => RunResult;
+  cleanup: () => void;
+};
+
+/** A sandbox whose CLI believes today is `today` (YYYY-MM-DD). */
+export function makeStandUpSandbox(today = '2026-11-19'): StandUpSandbox {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'su-test-')));
+  const tmp = path.join(root, 'tmp');
+  fs.mkdirSync(tmp);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    TMPDIR: tmp,
+    TMP: tmp,
+    TEMP: tmp,
+    STAND_UP_TODAY: today,
+    STAND_UP_NO_OPEN: '1',
+  };
+  return {
+    root,
+    tmp,
+    run: (args, extra = {}) => {
+      const result = spawnSync(process.execPath, [STAND_UP_CLI, ...args], {
+        cwd: root,
+        env: { ...env, ...extra },
+        encoding: 'utf8',
+      });
+      return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+    },
+    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/** The work folder `start` creates for `date`. */
+export function workFolder(sandbox: StandUpSandbox, date: string): string {
+  return path.join(sandbox.tmp, 'stand-up', date);
+}
+
+/** Runs `start` and returns its work folder. */
+export function started(sandbox: StandUpSandbox, args: string[] = []): string {
+  const result = sandbox.run(['start', ...args]);
+  if (result.status !== 0) throw new Error(result.stderr);
+  const line = result.stdout.split('\n').find((text) => text.startsWith('Work folder: '));
+  if (!line) throw new Error(result.stdout);
+  return line.slice('Work folder: '.length);
+}
+
+export function writePlan(folder: string, plan: unknown): void {
+  fs.writeFileSync(path.join(folder, 'plan.json'), JSON.stringify(plan, null, 2));
+}
+
+export function readPage(folder: string): string {
+  return fs.readFileSync(path.join(folder, 'stand-up.html'), 'utf8');
+}
+
+type Item = Record<string, unknown>;
+
+/** A valid item; `extra` overrides any field. */
+export function item(id: string, extra: Item = {}): Item {
+  return {
+    id,
+    title: `Title ${id}`,
+    summary: `Summary ${id}`,
+    kind: 'server',
+    status: { label: 'Merged', tone: 'ok' },
+    refs: '#1',
+    product: `What ${id} changes for users.`,
+    tech: [`Technical detail of ${id}.`],
+    links: [{ url: 'https://github.com/acme/app/pull/1', label: 'PR #1' }],
+    ...extra,
+  };
+}
+
+/** A valid plan with one item per section; `extra` overrides any field. */
+export function plan(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    yesterday: [{ title: 'Merged', items: [item('one')] }],
+    today: [{ title: 'Planned', items: [item('two', { status: { label: 'To do', tone: 'todo' } })] }],
+    blockers: [{ title: 'Decisions', items: [item('three', { status: { label: 'Waiting', tone: 'warn' } })] }],
+    ...extra,
+  };
+}

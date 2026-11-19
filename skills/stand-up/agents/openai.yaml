@@ -1,0 +1,5 @@
+interface:
+  display_name: "Stand-up"
+  short_description: "Stand-up page from your GitHub work"
+policy:
+  allow_implicit_invocation: false
