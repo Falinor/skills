@@ -33,7 +33,7 @@ export function render(args: string[]): void {
   const { plan, labels } = validatePlan(readPlan(folder), context.lang);
   const sections = sectionsOf(plan, labels, context);
   const page = path.join(folder, workFolderFiles.page);
-  fs.writeFileSync(page, renderPage(plan, sections, labels, context));
+  fs.writeFileSync(page, renderPage(sections, labels, context));
 
   const url = pathToFileURL(page).href;
   console.log(`Page: ${page}\nOpen: ${url}\n\n${handover(sections, labels, url)}`);

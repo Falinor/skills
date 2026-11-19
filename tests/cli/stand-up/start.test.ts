@@ -18,7 +18,7 @@ test('creates the work folder and reports on the previous day', () => {
   const folder = workFolder(sandbox, '2026-11-19');
   assert.match(result.stdout, new RegExp(`Work folder: ${folder}`));
   assert.match(result.stdout, /Period: 2026-11-18 to 2026-11-18/);
-  assert.deepEqual(context(folder), { today: '2026-11-19', since: '2026-11-18', lang: 'en' });
+  assert.deepEqual(context(folder), { today: '2026-11-19', since: '2026-11-18', until: '2026-11-18', lang: 'en' });
 });
 
 test('on a Monday, reports from the Friday before', () => {
@@ -29,6 +29,7 @@ test('on a Monday, reports from the Friday before', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Period: 2026-11-20 to 2026-11-22/);
   assert.equal(context(workFolder(sandbox, '2026-11-23')).since, '2026-11-20');
+  assert.equal(context(workFolder(sandbox, '2026-11-23')).until, '2026-11-22');
 });
 
 test('--since sets the first day of the period', () => {
@@ -67,4 +68,23 @@ test('refuses a --lang that is not a language tag', () => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /--lang/);
+});
+
+test('stops when gh is not installed', () => {
+  sandbox = makeStandUpSandbox('2026-11-19', { gh: 'missing' });
+
+  const result = sandbox.run(['start']);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /needs gh, which is not on PATH/);
+  assert.match(result.stderr, /gh auth login/);
+});
+
+test('stops when gh is not logged in', () => {
+  sandbox = makeStandUpSandbox('2026-11-19', { gh: 'logged-out' });
+
+  const result = sandbox.run(['start']);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /gh is not logged in: run `gh auth login`/);
 });

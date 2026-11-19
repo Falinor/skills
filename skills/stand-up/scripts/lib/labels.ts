@@ -4,7 +4,6 @@ import { UserError } from './errors.ts';
 
 export const labelKeys = [
   'standUp',
-  'inNumbers',
   'yesterday',
   'since',
   'today',
@@ -19,8 +18,11 @@ export const labelKeys = [
   'previous',
   'next',
   'close',
-  'matched',
-  'matchedNote',
+  'badgePullRequest',
+  'badgeIssue',
+  'badgeDocument',
+  'badgeGithub',
+  'badgeLink',
 ] as const;
 
 export type LabelKey = (typeof labelKeys)[number];
@@ -29,7 +31,6 @@ export type Labels = Record<LabelKey, string>;
 const builtIn: Record<string, Labels> = {
   en: {
     standUp: 'Stand-up',
-    inNumbers: 'In numbers',
     yesterday: 'Yesterday',
     since: 'Since',
     today: 'Today',
@@ -44,12 +45,14 @@ const builtIn: Record<string, Labels> = {
     previous: 'Previous',
     next: 'Next',
     close: 'Close',
-    matched: 'matched by search',
-    matchedNote: 'Links marked “matched by search” were found by searching, not linked from the work itself.',
+    badgePullRequest: 'PR',
+    badgeIssue: 'Issue',
+    badgeDocument: 'Doc',
+    badgeGithub: 'GitHub',
+    badgeLink: 'Link',
   },
   fr: {
     standUp: 'Point quotidien',
-    inNumbers: 'En chiffres',
     yesterday: 'Hier',
     since: 'Depuis',
     today: 'Aujourd’hui',
@@ -64,8 +67,11 @@ const builtIn: Record<string, Labels> = {
     previous: 'Précédent',
     next: 'Suivant',
     close: 'Fermer',
-    matched: 'rapproché',
-    matchedNote: 'Les liens « rapproché » ont été trouvés par recherche, sans lien depuis le travail lui-même.',
+    badgePullRequest: 'PR',
+    badgeIssue: 'Issue',
+    badgeDocument: 'Doc',
+    badgeGithub: 'GitHub',
+    badgeLink: 'Lien',
   },
 };
 

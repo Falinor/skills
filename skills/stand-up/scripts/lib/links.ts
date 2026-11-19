@@ -1,19 +1,22 @@
-// Where a link points decides the badge it gets on the page. Brand marks are
-// Simple Icons (CC0, simple-icons 13.0.0), inlined: the page loads nothing.
+// Where a link points decides the badge it gets on the page: a brand keeps its
+// name, other badges take a label in the page language. Brand marks are Simple
+// Icons (CC0, simple-icons 13.0.0), inlined: the page loads nothing.
+import { escape } from './html.ts';
+import type { Labels } from './labels.ts';
 
 export type Source = 'pull-request' | 'issue' | 'document' | 'github' | 'notion' | 'linear' | 'jira' | 'web';
 
 type Icon = 'github' | 'notion' | 'linear' | 'jira' | 'web';
 
-const sources: Record<Source, { label: string; icon: Icon }> = {
-  'pull-request': { label: 'PR', icon: 'github' },
-  issue: { label: 'Issue', icon: 'github' },
-  document: { label: 'Doc', icon: 'github' },
-  github: { label: 'GitHub', icon: 'github' },
-  notion: { label: 'Notion', icon: 'notion' },
-  linear: { label: 'Linear', icon: 'linear' },
-  jira: { label: 'Jira', icon: 'jira' },
-  web: { label: 'Link', icon: 'web' },
+const sources: Record<Source, { label: (labels: Labels) => string; icon: Icon }> = {
+  'pull-request': { label: (labels) => labels.badgePullRequest, icon: 'github' },
+  issue: { label: (labels) => labels.badgeIssue, icon: 'github' },
+  document: { label: (labels) => labels.badgeDocument, icon: 'github' },
+  github: { label: (labels) => labels.badgeGithub, icon: 'github' },
+  notion: { label: () => 'Notion', icon: 'notion' },
+  linear: { label: () => 'Linear', icon: 'linear' },
+  jira: { label: () => 'Jira', icon: 'jira' },
+  web: { label: (labels) => labels.badgeLink, icon: 'web' },
 };
 
 const paths: Record<Exclude<Icon, 'web'>, string> = {
@@ -48,8 +51,8 @@ export function sourceOf(url: string): Source {
 }
 
 /** The badge for `source`: its icon and its short name. */
-export function badge(source: Source): string {
+export function badge(source: Source, labels: Labels): string {
   const { label, icon } = sources[source];
   const svg = icon === 'web' ? globe : `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[icon]}"/></svg>`;
-  return `<span class="src">${svg}<span class="src-text">${label}</span></span>`;
+  return `<span class="src">${svg}<span class="src-text">${escape(label(labels))}</span></span>`;
 }

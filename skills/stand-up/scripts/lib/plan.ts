@@ -14,7 +14,7 @@ export type Tone = (typeof tones)[number];
 export const sectionKeys = ['yesterday', 'today', 'blockers'] as const;
 export type SectionKey = (typeof sectionKeys)[number];
 
-export type Link = { url: string; label: string; matched?: boolean };
+export type Link = { url: string; label: string };
 
 export type Item = {
   id: string;
@@ -30,10 +30,8 @@ export type Item = {
 
 export type Group = { title: string; hint?: string; items: Item[] };
 
-export type Plan = {
-  banner?: string;
-  tally?: { value: number | string; label: string }[];
-} & Record<SectionKey, Group[]>;
+/** `labels` override the built-in ones; a language without built-in labels needs them all. */
+export type Plan = { labels?: Partial<Labels> } & Record<SectionKey, Group[]>;
 
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -93,9 +91,6 @@ function checkItem(item: unknown, where: string, seen: Set<string>, violations: 
   for (const link of item.links) {
     if (!isObject(link) || !isText(link.label)) violations.push(`${id}: every link needs a label`);
     if (isObject(link)) checkUrl(link.url, id, violations);
-    if (isObject(link) && link.matched !== undefined && typeof link.matched !== 'boolean') {
-      violations.push(`${id}: link matched must be true or false`);
-    }
   }
 }
 
@@ -125,15 +120,6 @@ export function validatePlan(raw: unknown, lang: string): { plan: Plan; labels: 
       }
       group.items.forEach((item, position) => checkItem(item, `${name} item ${position + 1}`, seen, violations));
     });
-  }
-
-  if (raw.banner !== undefined && !isText(raw.banner)) violations.push('banner is empty');
-  checkInlineLinks(raw.banner, 'banner', violations);
-  if (raw.tally !== undefined) {
-    const valid =
-      Array.isArray(raw.tally) &&
-      raw.tally.every((entry) => isObject(entry) && isText(entry.label) && (typeof entry.value === 'number' || isText(entry.value)));
-    if (!valid) violations.push('tally must be a list of { value, label }');
   }
 
   const labels = resolveLabels(lang, raw.labels, violations);

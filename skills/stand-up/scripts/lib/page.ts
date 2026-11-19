@@ -7,7 +7,7 @@ import { longDate } from './dates.ts';
 import { escape } from './html.ts';
 import type { Labels } from './labels.ts';
 import { badge, sourceOf } from './links.ts';
-import type { Item, Plan } from './plan.ts';
+import type { Item } from './plan.ts';
 import type { Section } from './sections.ts';
 import { blocks, inline } from './text.ts';
 import type { Context } from './work-folder.ts';
@@ -46,11 +46,6 @@ a { color: var(--accent); }
 .top { display: grid; gap: 14px; }
 .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 h1 { font-size: clamp(28px, 4.2vw, 40px); line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
-.tally { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
-.tally li { display: flex; align-items: baseline; gap: 6px; color: var(--muted); }
-.tally b { font-size: 20px; line-height: 1; color: var(--fg); }
-.banner { display: grid; gap: 4px; background: var(--ok-soft); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); border-radius: 8px; padding: 12px 16px; }
-.banner p { margin: 0; }
 
 section.day { display: grid; gap: 20px; }
 .day-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; border-bottom: 2px solid var(--fg); padding-bottom: 10px; }
@@ -112,9 +107,6 @@ dialog::backdrop { background: var(--backdrop); }
 .links .src { flex: none; width: 82px; height: 22px; display: inline-flex; align-items: center; gap: 6px; font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .links .src .icon { color: var(--fg); }
 .links .src-text { text-box: trim-both cap alphabetic; }
-.links .note { color: var(--muted); font-size: 12.5px; }
-footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
-footer p { margin: 0; }
 
 @media (max-width: 520px) {
   body { padding-top: 20px; padding-bottom: 48px; }
@@ -203,8 +195,8 @@ function card(item: Item, labels: Labels): string {
 function detail(item: Item, where: string, labels: Labels): string {
   const links = item.links
     .map((link) => {
-      const note = link.matched ? ` <span class="note">(${escape(labels.matched)})</span>` : '';
-      return `<li data-source="${sourceOf(link.url)}"><a href="${escape(link.url)}" target="_blank" rel="noopener">${badge(sourceOf(link.url))}<span class="label">${escape(link.label)}</span></a>${note}</li>`;
+      const source = sourceOf(link.url);
+      return `<li data-source="${source}"><a href="${escape(link.url)}" target="_blank" rel="noopener">${badge(source, labels)}<span class="label">${escape(link.label)}</span></a></li>`;
     })
     .join('');
   return `<section class="detail" data-id="${item.id}" data-where="${escape(where)}" hidden>
@@ -219,11 +211,11 @@ function detail(item: Item, where: string, labels: Labels): string {
 </section>`;
 }
 
-function section(part: Section, labels: Labels): string {
-  const total = part.groups.reduce((count, group) => count + group.items.length, 0);
+function renderSection(section: Section, labels: Labels): string {
+  const total = section.groups.reduce((count, group) => count + group.items.length, 0);
   const count = `${total} ${total === 1 ? labels.item : labels.items}`;
-  const body = part.groups.length
-    ? `<div class="groups">${part.groups
+  const body = section.groups.length
+    ? `<div class="groups">${section.groups
         .map(
           (group) => `<div class="group">
   <h3>${escape(group.title)}</h3>
@@ -233,25 +225,18 @@ function section(part: Section, labels: Labels): string {
         )
         .join('\n')}</div>`
     : `<p class="nothing">${escape(labels.nothing)}</p>`;
-  return `<section class="day" aria-labelledby="section-${part.key}">
-  <div class="day-head"><h2 id="section-${part.key}">${escape(part.title)}</h2>${part.when ? `<span class="when">${escape(part.when)}</span>` : ''}<span class="count">${escape(count)}</span></div>
+  return `<section class="day" aria-labelledby="section-${section.key}">
+  <div class="day-head"><h2 id="section-${section.key}">${escape(section.title)}</h2>${section.when ? `<span class="when">${escape(section.when)}</span>` : ''}<span class="count">${escape(count)}</span></div>
   ${body}
 </section>`;
 }
 
 /** The whole page for a validated plan. */
-export function renderPage(plan: Plan, sections: Section[], labels: Labels, context: Context): string {
+export function renderPage(sections: Section[], labels: Labels, context: Context): string {
   const date = capitalize(longDate(context.today, context.lang), context.lang);
-  const details = sections.flatMap((part) =>
-    part.groups.flatMap((group) => group.items.map((item) => detail(item, `${part.title} · ${group.title}`, labels))),
+  const details = sections.flatMap((section) =>
+    section.groups.flatMap((group) => group.items.map((item) => detail(item, `${section.title} · ${group.title}`, labels))),
   );
-  const matched = sections.some((part) => part.groups.some((group) => group.items.some((item) => item.links.some((link) => link.matched))));
-  const tally = plan.tally?.length
-    ? `<ul class="tally" aria-label="${escape(labels.inNumbers)}">${plan.tally
-        .map((entry) => `<li><b>${escape(String(entry.value))}</b> ${escape(entry.label)}</li>`)
-        .join('')}</ul>`
-    : '';
-  const banner = plan.banner ? `<div class="banner" role="note">${blocks(plan.banner)}</div>` : '';
 
   return `<!doctype html>
 <html lang="${escape(context.lang)}">
@@ -268,13 +253,10 @@ export function renderPage(plan: Plan, sections: Section[], labels: Labels, cont
 <header class="top">
   <span class="eyebrow">${escape(labels.standUp)}</span>
   <h1>${escape(date)}</h1>
-  ${tally}
-  ${banner}
 </header>
 <main class="sections">
-${sections.map((part) => section(part, labels)).join('\n')}
+${sections.map((section) => renderSection(section, labels)).join('\n')}
 </main>
-${matched ? `<footer><p>${escape(labels.matchedNote)}</p></footer>` : ''}
 </div>
 <dialog id="detail" aria-labelledby="detail-where">
   <div class="dlg-bar">

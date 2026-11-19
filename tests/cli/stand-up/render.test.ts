@@ -43,8 +43,6 @@ test('escapes every piece of plan text', () => {
   writePlan(
     folder,
     plan({
-      banner: `Banner ${hostile}`,
-      tally: [{ value: 3, label: `merged ${hostile}` }],
       yesterday: [
         {
           title: `Group ${hostile}`,
@@ -71,21 +69,21 @@ test('escapes every piece of plan text', () => {
   assert.equal(result.status, 0, result.stderr);
   const html = readPage(folder);
   assert.ok(!html.includes(hostile), 'raw markup leaked into the page');
-  for (const label of ['Banner', 'merged', 'Group', 'Hint', 'Title', 'Summary', 'Kind', 'Refs', 'Status', 'Product', 'Tech', 'Link']) {
+  for (const label of ['Group', 'Hint', 'Title', 'Summary', 'Kind', 'Refs', 'Status', 'Product', 'Tech', 'Link']) {
     assert.ok(html.includes(`${label} &lt;script&gt;alert(1)&lt;/script&gt;`), label);
   }
   assert.ok(html.includes('href="https://example.com/?a=1&amp;b=&quot;2&quot;"'));
 });
 
-test('turns backticks into code and [label](https) into links, in product, tech and banner', () => {
+test('turns backticks into code and [label](https) into links, in product, tech and hint', () => {
   const folder = started(sandbox);
   writePlan(
     folder,
     plan({
-      banner: 'See [the spec](https://example.com/spec).',
       yesterday: [
         {
           title: 'Merged',
+          hint: 'See [the spec](https://example.com/spec).',
           items: [
             item('one', {
               product: 'First paragraph with [a link](https://example.com/a).\n\n- one point\n- `another` point',
@@ -165,6 +163,22 @@ test('labels the page in the start language, with dates written in it', () => {
   assert.match(html, /Résumé produit/);
   assert.match(html, /Jeudi 19 novembre 2026/);
   assert.match(html, /mercredi 18 novembre 2026/);
+});
+
+test('names link badges in the page language, brands as they are', () => {
+  const folder = started(sandbox, ['--lang', 'fr']);
+  const links = [
+    { url: 'https://example.com/', label: 'Site' },
+    { url: 'https://www.notion.so/acme/Ticket-123', label: 'Ticket' },
+  ];
+  writePlan(folder, plan({ yesterday: [{ title: 'Mergé', items: [item('one', { links })] }] }));
+
+  const result = sandbox.run(['render', folder]);
+
+  assert.equal(result.status, 0, result.stderr);
+  const html = readPage(folder);
+  assert.ok(html.includes('<span class="src-text">Lien</span>'));
+  assert.ok(html.includes('<span class="src-text">Notion</span>'));
 });
 
 test('a language without built-in labels needs every label in the plan', () => {

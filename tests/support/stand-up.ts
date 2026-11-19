@@ -1,5 +1,6 @@
 // Throwaway world for driving the stand-up CLI from the outside: a temp root
-// whose private TMPDIR receives the work folders, and a fixed "today".
+// whose private TMPDIR receives the work folders, a fixed "today", and a fake
+// gh in place of the real one, so no test depends on the machine's login.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,13 +19,42 @@ export type StandUpSandbox = {
   cleanup: () => void;
 };
 
+/** What the CLI finds on PATH for gh: a logged-in fake, a logged-out fake, or nothing. */
+export type GhState = 'logged-in' | 'logged-out' | 'missing';
+
+const fakeGh: Record<Exclude<GhState, 'missing'>, string> = {
+  'logged-in': '#!/bin/sh\nexit 0\n',
+  'logged-out': '#!/bin/sh\n[ "$1 $2" = "auth status" ] && exit 1\nexit 0\n',
+};
+
+/** The full path of `tool` on the test runner's own PATH. */
+function onPath(tool: string): string {
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+    const candidate = path.join(dir, tool);
+    if (dir && fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(`${tool} is not on PATH`);
+}
+
 /** A sandbox whose CLI believes today is `today` (YYYY-MM-DD). */
-export function makeStandUpSandbox(today = '2026-11-19'): StandUpSandbox {
+export function makeStandUpSandbox(today = '2026-11-19', { gh = 'logged-in' }: { gh?: GhState } = {}): StandUpSandbox {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'su-test-')));
   const tmp = path.join(root, 'tmp');
+  const bin = path.join(root, 'bin');
   fs.mkdirSync(tmp);
+  fs.mkdirSync(bin);
+  // The fake gh comes first on PATH and shadows the real one. Without gh, PATH
+  // holds only bin/, where git is linked so the CLI still finds it.
+  let searchPath = `${bin}${path.delimiter}${process.env.PATH ?? ''}`;
+  if (gh === 'missing') {
+    fs.symlinkSync(onPath('git'), path.join(bin, 'git'));
+    searchPath = bin;
+  } else {
+    fs.writeFileSync(path.join(bin, 'gh'), fakeGh[gh], { mode: 0o755 });
+  }
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    PATH: searchPath,
     TMPDIR: tmp,
     TMP: tmp,
     TEMP: tmp,

@@ -1,6 +1,7 @@
 import { parseCommandArgs } from './args.ts';
 import { addDays, formatDay, parseDay, previousWorkday, today } from './dates.ts';
 import { UserError } from './errors.ts';
+import { requireGhLogin, requireTools } from './requirements.ts';
 import { workFolderFor, writeContext } from './work-folder.ts';
 
 const usage = 'usage: stand-up start [--since YYYY-MM-DD] [--lang <language tag>]';
@@ -24,6 +25,8 @@ export function start(args: string[]): void {
     usage,
     0,
   );
+  requireTools(['git', 'gh']);
+  requireGhLogin();
   const now = today();
   let since = previousWorkday(now);
   if (values.since !== undefined) {
@@ -33,12 +36,14 @@ export function start(args: string[]): void {
   }
   const lang = canonicalLanguage(values.lang);
 
+  const until = addDays(now, -1);
+
   const folder = workFolderFor(formatDay(now));
-  writeContext(folder, { today: formatDay(now), since: formatDay(since), lang });
+  writeContext(folder, { today: formatDay(now), since: formatDay(since), until: formatDay(until), lang });
   console.log(
     [
       `Work folder: ${folder}`,
-      `Period: ${formatDay(since)} to ${formatDay(addDays(now, -1))}`,
+      `Period: ${formatDay(since)} to ${formatDay(until)}`,
       `Language: ${lang}`,
     ].join('\n'),
   );
