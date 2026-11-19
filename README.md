@@ -28,6 +28,22 @@ Requires Node 24.12+ and git (gh for GitHub pull requests). The skill runs only 
 
 Optional: difftastic (`brew install difftastic` or `cargo install --locked difftastic`) lets the tour prove formatter reflows and re-indentation syntax-identical. The tour asks about it before it starts and still works without it; the tool never installs it.
 
+## stand-up
+
+`/stand-up [lang <code>] [since <YYYY-MM-DD>]` builds a **stand-up page** from your GitHub work: a local, self-contained HTML page in three sections (the work since you last worked, today's plan, blockers), written to a per-day folder under the system temp directory.
+
+Each item is a card with a title and a short description. Opening it shows a product summary, technical details and links, each link badged by where it points (pull request, issue, document, Notion, Linear, Jira). The title, the description and the product summary are written in plain words for a product team; everything else keeps the developer's jargon, so you can present the page at stand-up and still find the details you need. Every item opens at its own `#id` link, and Previous / Next walk through them in order.
+
+The period starts on your last day of activity: the latest day before today with one of your GitHub events (push, pull request, review, comment, in any repository) or one of your commits in the repository, pushed or not. `since` sets it by hand. The first section is headed Yesterday, the weekday within the past week, or Since and the date beyond. The page is in English unless `lang` names another language: French labels ship with the skill; for any other language the agent translates them. It follows the system's light or dark theme. Nothing leaves your machine: the page loads no font, script or image from the network, and its Content-Security-Policy allows its one script by hash and nothing else.
+
+### Install
+
+```sh
+npx skills add Falinor/skills --skill stand-up
+```
+
+Requires Node 24.12+, git and gh (logged in). The skill runs only when you invoke it.
+
 ## Development
 
 ```sh
@@ -58,6 +74,8 @@ Each run builds a fresh repository whose change looks like a tidy-up: a function
 ## Credits
 
 `review-tour` was inspired by Trail of Bits' [`review-walkthrough`](https://github.com/trailofbits/skills) and Cursor's `pr-review-canvas`. No code or prose was copied from either; it is written from our own decisions ([ADR 0001](docs/adr/0001-rewrite-from-ideas-under-mit.md)).
+
+`stand-up` grew from the yesterday / today / blockers format of Anthropic's `engineering:standup` skill. No prose was copied from it.
 
 ## License
 
