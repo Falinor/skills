@@ -9,7 +9,7 @@ import type { Labels } from './labels.ts';
 import { badge, sourceOf } from './links.ts';
 import type { Item, Plan } from './plan.ts';
 import type { Section } from './sections.ts';
-import { blocks, inline } from './text.ts';
+import { blocks, capitalize, inline } from './text.ts';
 import type { Context } from './work-folder.ts';
 
 const styles = `
@@ -181,8 +181,6 @@ const script = String.raw`addEventListener('DOMContentLoaded', () => {
 });`;
 
 const scriptHash = createHash('sha256').update(script).digest('base64');
-
-const capitalize = (text: string, lang: string) => text.charAt(0).toLocaleUpperCase(lang) + text.slice(1);
 
 function pill(item: Item): string {
   return `<span class="pill tone-${item.status.tone}">${escape(item.status.label)}</span>`;

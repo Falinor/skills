@@ -1,4 +1,5 @@
 import { parseCommandArgs } from './args.ts';
+import { lastActiveDay } from './activity.ts';
 import { addDays, formatDay, parseDay, previousWorkday, today } from './dates.ts';
 import { UserError } from './errors.ts';
 import { requireGhLogin, requireTools } from './requirements.ts';
@@ -28,14 +29,18 @@ export function start(args: string[]): void {
   requireTools(['git', 'gh']);
   requireGhLogin();
   const now = today();
-  let since = previousWorkday(now);
+  const lang = canonicalLanguage(values.lang);
+  const found: string[] = [];
+  let since: Date;
   if (values.since !== undefined) {
     const day = parseDay(values.since);
     if (!day || day >= now) throw new UserError(`--since must be a past day like 2026-11-14 (found ${values.since})`);
     since = day;
+  } else {
+    const last = lastActiveDay(formatDay(now));
+    since = last ? parseDay(last)! : previousWorkday(now);
+    found.push(last ? `Last activity: ${last}` : `No activity found before today: starting on the previous weekday, ${formatDay(since)}`);
   }
-  const lang = canonicalLanguage(values.lang);
-
   const until = addDays(now, -1);
 
   const folder = workFolderFor(formatDay(now));
@@ -43,6 +48,7 @@ export function start(args: string[]): void {
   console.log(
     [
       `Work folder: ${folder}`,
+      ...found,
       `Period: ${formatDay(since)} to ${formatDay(until)}`,
       `Language: ${lang}`,
     ].join('\n'),

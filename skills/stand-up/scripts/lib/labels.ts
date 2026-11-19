@@ -57,7 +57,7 @@ const builtIn: Record<string, Labels> = {
     standUp: 'Point quotidien',
     inNumbers: 'En chiffres',
     yesterday: 'Hier',
-    since: 'Depuis',
+    since: 'Depuis le',
     today: 'Aujourd’hui',
     blockers: 'Blocages',
     nothing: 'Rien à signaler',

@@ -189,6 +189,24 @@ test('names link badges in the page language, brands as they are', () => {
   assert.ok(html.includes('<span class="src-text">Notion</span>'));
 });
 
+test('heads the first section by how far back it starts: yesterday, a weekday this week, a date beyond', () => {
+  const heading = (args: string[]) => {
+    const folder = started(sandbox, args);
+    writePlan(folder, plan());
+    assert.equal(sandbox.run(['render', folder]).status, 0);
+    return readPage(folder).match(/<h2 id="section-yesterday">(.*?)<\/h2><span class="when">(.*?)<\/span>/)!.slice(1);
+  };
+
+  assert.deepEqual(heading(['--since', '2026-11-18']), ['Yesterday', 'Wednesday, November 18, 2026']);
+  const [weekday, range] = heading(['--since', '2026-11-17']);
+  assert.equal(weekday, 'Tuesday');
+  assert.match(range, /November 17/);
+  assert.match(range, /18/);
+  assert.equal(heading(['--since', '2026-11-05'])[0], 'Since November 5');
+  assert.equal(heading(['--since', '2026-11-05', '--lang', 'fr'])[0], 'Depuis le 5 novembre');
+  assert.equal(heading(['--since', '2026-11-17', '--lang', 'fr'])[0], 'Mardi');
+});
+
 test('a language without built-in labels needs every label in the plan', () => {
   const folder = started(sandbox, ['--lang', 'de']);
   writePlan(folder, plan({ labels: { today: 'Heute' } }));

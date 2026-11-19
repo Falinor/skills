@@ -9,27 +9,50 @@ afterEach(() => sandbox.cleanup());
 
 const context = (folder: string) => JSON.parse(fs.readFileSync(path.join(folder, 'context.json'), 'utf8'));
 
-test('creates the work folder and reports on the previous day', () => {
-  sandbox = makeStandUpSandbox('2026-11-19');
+test('creates the work folder and reports from the last day with activity', () => {
+  sandbox = makeStandUpSandbox('2026-11-19', { events: ['2026-11-18T16:00:00Z', '2026-11-12T09:00:00Z'] });
 
   const result = sandbox.run(['start']);
 
   assert.equal(result.status, 0, result.stderr);
   const folder = workFolder(sandbox, '2026-11-19');
   assert.match(result.stdout, new RegExp(`Work folder: ${folder}`));
+  assert.match(result.stdout, /Last activity: 2026-11-18/);
   assert.match(result.stdout, /Period: 2026-11-18 to 2026-11-18/);
   assert.deepEqual(context(folder), { today: '2026-11-19', since: '2026-11-18', until: '2026-11-18', lang: 'en' });
 });
 
-test('on a Monday, reports from the Friday before', () => {
+test('skips days without activity: Tuesday worked, Wednesday off, back on Thursday', () => {
+  sandbox = makeStandUpSandbox('2026-11-19', {
+    events: ['2026-11-19T08:30:00Z', '2026-11-17T17:45:00Z', '2026-11-16T10:00:00Z'],
+  });
+
+  const result = sandbox.run(['start']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Last activity: 2026-11-17/);
+  assert.match(result.stdout, /Period: 2026-11-17 to 2026-11-18/);
+});
+
+test('counts commits not pushed yet as activity', () => {
+  sandbox = makeStandUpSandbox('2026-11-19', { events: ['2026-11-13T11:00:00Z'] });
+  sandbox.commitAt('2026-11-18T19:00:00Z');
+  sandbox.commitAt('2026-11-19T07:00:00Z');
+
+  const result = sandbox.run(['start']);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Last activity: 2026-11-18/);
+});
+
+test('without any activity before today, starts on the previous weekday and says so', () => {
   sandbox = makeStandUpSandbox('2026-11-23');
 
   const result = sandbox.run(['start']);
 
   assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /No activity found before today: starting on the previous weekday/);
   assert.match(result.stdout, /Period: 2026-11-20 to 2026-11-22/);
-  assert.equal(context(workFolder(sandbox, '2026-11-23')).since, '2026-11-20');
-  assert.equal(context(workFolder(sandbox, '2026-11-23')).until, '2026-11-22');
 });
 
 test('--since sets the first day of the period', () => {

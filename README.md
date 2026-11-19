@@ -30,11 +30,11 @@ Optional: difftastic (`brew install difftastic` or `cargo install --locked difft
 
 ## stand-up
 
-`/stand-up [lang <code>] [since <YYYY-MM-DD>]` builds a **stand-up page** from your GitHub work: a local, self-contained HTML page in three sections (the work since the last working day, today's plan, blockers), written to a per-day folder under the system temp directory.
+`/stand-up [lang <code>] [since <YYYY-MM-DD>]` builds a **stand-up page** from your GitHub work: a local, self-contained HTML page in three sections (the work since you last worked, today's plan, blockers), written to a per-day folder under the system temp directory.
 
 Each item is a card with a title and a short description. Opening it shows a product summary, technical details and links, each link badged by where it points (pull request, issue, document, Notion, Linear, Jira). The title, the description and the product summary are written in plain words for a product team; everything else keeps the developer's jargon, so you can present the page at stand-up and still find the details you need. Every item opens at its own `#id` link, and Previous / Next walk through them in order.
 
-The period starts on the last working day (Friday on a Monday), or on the day `since` names. The page is in English unless `lang` names another language: French labels ship with the skill; for any other language the agent translates them. It follows the system's light or dark theme. Nothing leaves your machine: the page loads no font, script or image from the network, and its Content-Security-Policy allows its one script by hash and nothing else.
+The period starts on your last day of activity: the latest day before today with one of your GitHub events (push, pull request, review, comment, in any repository) or one of your commits in the repository, pushed or not. `since` sets it by hand. The first section is headed Yesterday, the weekday within the past week, or Since and the date beyond. The page is in English unless `lang` names another language: French labels ship with the skill; for any other language the agent translates them. It follows the system's light or dark theme. Nothing leaves your machine: the page loads no font, script or image from the network, and its Content-Security-Policy allows its one script by hash and nothing else.
 
 ### Install
 

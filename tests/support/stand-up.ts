@@ -1,6 +1,7 @@
 // Throwaway world for driving the stand-up CLI from the outside: a temp root
-// whose private TMPDIR receives the work folders, a fixed "today", and a fake
-// gh in place of the real one, so no test depends on the machine's login.
+// whose private TMPDIR receives the work folders, a fixed "today" in UTC, and
+// a fake gh in place of the real one, answering with the activity a test
+// gives it, so no test depends on the machine's login or history.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,16 +17,24 @@ export type StandUpSandbox = {
   tmp: string;
   /** Run the CLI with the sandbox environment. */
   run: (args: string[], env?: NodeJS.ProcessEnv) => RunResult;
+  /** Commit in a repository at the sandbox root, as the user, at `date` (ISO 8601). */
+  commitAt: (date: string) => void;
   cleanup: () => void;
 };
 
 /** What the CLI finds on PATH for gh: a logged-in fake, a logged-out fake, or nothing. */
 export type GhState = 'logged-in' | 'logged-out' | 'missing';
 
-const fakeGh: Record<Exclude<GhState, 'missing'>, string> = {
-  'logged-in': '#!/bin/sh\nexit 0\n',
-  'logged-out': '#!/bin/sh\n[ "$1 $2" = "auth status" ] && exit 1\nexit 0\n',
-};
+// The fake answers what the CLI asks: the login, then the user's events
+// (one created_at per line, from bin/events.txt), as `gh api … --jq` prints them.
+const fakeGh = (loggedIn: boolean) => `#!/bin/sh
+case "$1 $2" in
+  "auth status") exit ${loggedIn ? 0 : 1} ;;
+  "api user") echo octocat ;;
+  api\\ users/octocat/events*) cat "$(dirname "$0")/events.txt" ;;
+esac
+exit 0
+`;
 
 /** The full path of `tool` on the test runner's own PATH. */
 function onPath(tool: string): string {
@@ -37,7 +46,10 @@ function onPath(tool: string): string {
 }
 
 /** A sandbox whose CLI believes today is `today` (YYYY-MM-DD). */
-export function makeStandUpSandbox(today = '2026-11-19', { gh = 'logged-in' }: { gh?: GhState } = {}): StandUpSandbox {
+export function makeStandUpSandbox(
+  today = '2026-11-19',
+  { gh = 'logged-in', events = [] }: { gh?: GhState; events?: string[] } = {},
+): StandUpSandbox {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'su-test-')));
   const tmp = path.join(root, 'tmp');
   const bin = path.join(root, 'bin');
@@ -50,8 +62,11 @@ export function makeStandUpSandbox(today = '2026-11-19', { gh = 'logged-in' }: {
     fs.symlinkSync(onPath('git'), path.join(bin, 'git'));
     searchPath = bin;
   } else {
-    fs.writeFileSync(path.join(bin, 'gh'), fakeGh[gh], { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'gh'), fakeGh(gh === 'logged-in'), { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'events.txt'), events.map((event) => `${event}\n`).join(''));
   }
+  const gitConfig = path.join(root, 'gitconfig');
+  fs.writeFileSync(gitConfig, '[user]\n\tname = Octo Cat\n\temail = octocat@example.invalid\n');
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: searchPath,
@@ -60,6 +75,13 @@ export function makeStandUpSandbox(today = '2026-11-19', { gh = 'logged-in' }: {
     TEMP: tmp,
     STAND_UP_TODAY: today,
     STAND_UP_NO_OPEN: '1',
+    TZ: 'UTC',
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_CONFIG_NOSYSTEM: '1',
+  };
+  const git = (args: string[], extra: NodeJS.ProcessEnv = {}) => {
+    const result = spawnSync('git', args, { cwd: root, env: { ...env, ...extra }, encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed:\n${result.stderr}`);
   };
   return {
     root,
@@ -71,6 +93,10 @@ export function makeStandUpSandbox(today = '2026-11-19', { gh = 'logged-in' }: {
         encoding: 'utf8',
       });
       return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+    },
+    commitAt: (date) => {
+      if (!fs.existsSync(path.join(root, '.git'))) git(['init', '-q']);
+      git(['commit', '-q', '--allow-empty', '-m', `work on ${date}`], { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
     },
     cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
   };

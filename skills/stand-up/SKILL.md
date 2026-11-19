@@ -9,14 +9,14 @@ argument-hint: "[lang <code>] [since <YYYY-MM-DD>]"
 
 # Stand-up
 
-Build a **stand-up page** the user presents at their daily stand-up: a local HTML page with three sections (the work since the last working day, today's plan, blockers) whose **items** each open on a detail view. The user speaks from it to a product team that doesn't read code, so every item serves two audiences: its title, summary and product summary in **plain words** for the product team; everything else in the user's own developer jargon.
+Build a **stand-up page** the user presents at their daily stand-up: a local HTML page with three sections (the work since the user last worked, today's plan, blockers) whose **items** each open on a detail view. The user speaks from it to a product team that doesn't read code, so every item serves two audiences: its title, summary and product summary in **plain words** for the product team; everything else in the user's own developer jargon.
 
 The tool is `scripts/stand-up.mjs`, next to this SKILL.md. Run it as `node <skill-dir>/scripts/stand-up.mjs <subcommand> …` from the repository to report on, where `<skill-dir>` is the directory holding this SKILL.md. When it stops with a message, relay the message to the user and stop.
 
 ## Steps
 
 1. **Parse the arguments**: `lang <code>` (the page's language, such as `fr`) and `since <YYYY-MM-DD>` (the first day to report on). Done when you know each one's value or that it was left out.
-2. **Start**: run `start`, adding `--lang <code>` and `--since <day>` when given. It checks that git and gh are ready, works out the period (from the last working day, Friday on a Monday, to yesterday) and creates the work folder. Done when it prints the work folder, the period and the language.
+2. **Start**: run `start`, adding `--lang <code>` and `--since <day>` when given. It checks that git and gh are ready, works out the period (from the last day the user was active, read from their GitHub events and their commits here, to yesterday) and creates the work folder. Done when it prints the work folder, the period and the language.
 3. **Gather** the user's work from the current repository (see **Gathering**). Done when you hold every pull request the user authored or reviewed that moved in the period, every pull request waiting on their review, and every issue assigned to them, each with its body and comments read, and you know what happened to each in the period and what happened today.
 4. **Write the plan** to `plan.json` in the work folder (see **Plan** and **Writing the items**). Done when every gathered pull request and issue sits in exactly one item, and every item has its plain-words product summary and its technical details.
 5. **Render**: run `render <work-folder> --open`. When it lists problems, fix every one in `plan.json` and run it again. Done when it prints the page.

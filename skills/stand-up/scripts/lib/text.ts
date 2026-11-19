@@ -7,6 +7,9 @@ const token = /`([^`]+)`|\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g;
 
 export const isSafeUrl = (url: string) => url.startsWith('https://') && URL.canParse(url);
 
+/** `text` with its first letter upper-cased the way `lang` does it. */
+export const capitalize = (text: string, lang: string) => text.charAt(0).toLocaleUpperCase(lang) + text.slice(1);
+
 export function linkTo(url: string, html: string): string {
   return `<a href="${escape(url)}" target="_blank" rel="noopener">${html}</a>`;
 }
