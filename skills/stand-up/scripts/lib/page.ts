@@ -1,7 +1,9 @@
 // The stand-up page: one self-contained HTML file. Cards for every item sit
 // in three sections; each item's details sit in one dialog, shown one at a
-// time and reached by #id. Its only script opens and walks that dialog; the
-// Content-Security-Policy allows that script by hash and nothing else.
+// time and reached by #id. Its only script opens and walks that dialog, moves
+// between cards with the arrow keys, and keeps today's Done ticks in the
+// browser's storage; the Content-Security-Policy allows that script by hash
+// and nothing else.
 import { createHash } from 'node:crypto';
 import { longDate } from './dates.ts';
 import { escape } from './html.ts';
@@ -76,6 +78,13 @@ section.day { display: grid; gap: 20px; }
 .card p { margin: 0; color: var(--muted); font-size: 14px; }
 .card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 6px; border-top: 1px dashed var(--line); }
 .card-foot .more { color: var(--accent); font-weight: 500; white-space: nowrap; }
+.card.done { background: var(--bg); }
+.card.done h4 { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.check { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--fg); }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ok); cursor: pointer; }
+.detail-head .check { justify-self: start; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 14px; }
+footer p { margin: 0; }
 
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; line-height: 1; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -89,6 +98,10 @@ dialog::backdrop { background: var(--backdrop); }
 @media (prefers-reduced-motion: no-preference) {
   dialog[open] { animation: zoom .18s ease-out; }
   @keyframes zoom { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+  .detail[data-enter="next"] { animation: enter-next .2s cubic-bezier(.2, .7, .3, 1); }
+  .detail[data-enter="previous"] { animation: enter-previous .2s cubic-bezier(.2, .7, .3, 1); }
+  @keyframes enter-next { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+  @keyframes enter-previous { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
 }
 .dlg-bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
 .dlg-bar .where { font-size: 13px; color: var(--muted); margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -129,11 +142,19 @@ const script = String.raw`addEventListener('DOMContentLoaded', () => {
   const next = document.getElementById('detail-next');
   const close = document.getElementById('detail-close');
   let current = null;
+  // 'next' or 'previous' while moving between items: the panel slides in from that side.
+  let direction = '';
 
   function show(id) {
     current = id;
     for (const panel of panels) panel.hidden = panel.dataset.id !== id;
     const panel = panels[order.indexOf(id)];
+    panel.removeAttribute('data-enter');
+    if (direction) {
+      void panel.offsetWidth; // restart the slide when the same direction repeats
+      panel.dataset.enter = direction;
+    }
+    direction = '';
     dialog.setAttribute('aria-labelledby', 'title-' + id);
     where.textContent = panel.dataset.where;
     const index = order.indexOf(id);
@@ -144,15 +165,18 @@ const script = String.raw`addEventListener('DOMContentLoaded', () => {
     close.focus();
   }
 
+  // Show the item at once, then record it in the address: a second press
+  // before the hashchange lands then starts from the item on screen.
   function go(id) {
-    if (location.hash.slice(1) === id) show(id);
-    else location.hash = id;
+    show(id);
+    if (location.hash.slice(1) !== id) location.hash = id;
   }
 
   function fromHash() {
     const id = location.hash.slice(1);
-    if (order.includes(id)) show(id);
-    else if (dialog.open) dialog.close();
+    if (order.includes(id)) {
+      if (!dialog.open || id !== current) show(id);
+    } else if (dialog.open) dialog.close();
   }
 
   dialog.addEventListener('close', () => {
@@ -170,32 +194,139 @@ const script = String.raw`addEventListener('DOMContentLoaded', () => {
   close.addEventListener('click', () => dialog.close());
   previous.addEventListener('click', () => {
     const index = order.indexOf(current);
-    if (index > 0) go(order[index - 1]);
+    if (index > 0) {
+      direction = 'previous';
+      go(order[index - 1]);
+    }
   });
   next.addEventListener('click', () => {
     const index = order.indexOf(current);
-    if (index < order.length - 1) go(order[index + 1]);
+    if (index < order.length - 1) {
+      direction = 'next';
+      go(order[index + 1]);
+    }
   });
+
+  // Arrow keys: in the details, the previous and next item; on a card, the
+  // card beside it in page order, or the nearest card in the row above or below.
+  const cards = order.map((id) => document.getElementById('card-' + id));
+  // Cards whose tops differ by less than this many pixels share a row (a hovered card lifts by 1px).
+  const rowTolerance = 4;
+  const topOf = (card) => card.getBoundingClientRect().top;
+  const centreOf = (card) => {
+    const box = card.getBoundingClientRect();
+    return box.left + box.width / 2;
+  };
+
+  function nearestInRow(card, down) {
+    const from = topOf(card);
+    const candidates = cards.filter((other) =>
+      down ? topOf(other) > from + rowTolerance : topOf(other) < from - rowTolerance,
+    );
+    if (!candidates.length) return null;
+    const tops = candidates.map(topOf);
+    const row = down ? Math.min(...tops) : Math.max(...tops);
+    const x = centreOf(card);
+    return candidates
+      .filter((other) => Math.abs(topOf(other) - row) < rowTolerance)
+      .sort((a, b) => Math.abs(centreOf(a) - x) - Math.abs(centreOf(b) - x))[0];
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (dialog.open) {
+      const button = { ArrowLeft: previous, ArrowRight: next }[event.key];
+      if (button && !button.disabled) {
+        event.preventDefault();
+        button.click();
+      }
+      return;
+    }
+    const card = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.card') : null;
+    if (!card) return;
+    const index = cards.indexOf(card);
+    let target = null;
+    if (event.key === 'ArrowRight') target = cards[index + 1];
+    else if (event.key === 'ArrowLeft') target = cards[index - 1];
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') target = nearestInRow(card, event.key === 'ArrowDown');
+    else return;
+    if (!target) return;
+    event.preventDefault();
+    target.querySelector('.card-link').focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'nearest' });
+  });
+
+  // Done checkboxes on today's items, remembered per day in this browser only.
+  const storageKey = 'stand-up:' + document.body.dataset.day;
+  const doneLabel = document.body.dataset.doneLabel;
+  const boxes = Array.from(document.querySelectorAll('[data-check]'));
+  const checkable = Array.from(new Set(boxes.map((box) => box.dataset.check)));
+  let done = {};
+  try {
+    done = JSON.parse(localStorage.getItem(storageKey) || '{}') || {};
+  } catch {
+    // Storage blocked: ticks last as long as the page.
+  }
+
+  function paint() {
+    for (const box of boxes) box.checked = Boolean(done[box.dataset.check]);
+    for (const id of checkable) {
+      const isDone = Boolean(done[id]);
+      document.getElementById('card-' + id).classList.toggle('done', isDone);
+      for (const pill of document.querySelectorAll('[data-pill="' + id + '"]')) {
+        pill.textContent = isDone ? doneLabel : pill.dataset.label;
+        pill.className = 'pill tone-' + (isDone ? 'ok' : pill.dataset.tone);
+      }
+    }
+    const count = document.getElementById('done-count');
+    if (count) count.textContent = String(checkable.filter((id) => done[id]).length);
+  }
+
+  document.addEventListener('change', (event) => {
+    const id = event.target.dataset && event.target.dataset.check;
+    if (!id) return;
+    if (event.target.checked) done[id] = true;
+    else delete done[id];
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(done));
+    } catch {
+      // Storage blocked: keep the tick for this visit only.
+    }
+    paint();
+  });
+  paint();
+
   addEventListener('hashchange', fromHash);
   fromHash();
 });`;
 
 const scriptHash = createHash('sha256').update(script).digest('base64');
 
-function pill(item: Item): string {
-  return `<span class="pill tone-${item.status.tone}">${escape(item.status.label)}</span>`;
+/** The status pill; a checkable item's pill also keeps its status, to show again when unticked. */
+function pill(item: Item, checkable: boolean): string {
+  const memory = checkable
+    ? ` data-pill="${item.id}" data-label="${escape(item.status.label)}" data-tone="${item.status.tone}"`
+    : '';
+  return `<span class="pill tone-${item.status.tone}"${memory}>${escape(item.status.label)}</span>`;
 }
 
-function card(item: Item, labels: Labels): string {
+function checkbox(item: Item, labels: Labels): string {
+  return `<label class="check"><input type="checkbox" data-check="${item.id}" aria-label="${escape(labels.done)} – ${escape(item.title)}"><span>${escape(labels.done)}</span></label>`;
+}
+
+/** A card; today's items carry a Done checkbox in place of their kind, which moves to the foot. */
+function card(item: Item, labels: Labels, checkable: boolean): string {
+  const top = checkable ? checkbox(item, labels) : `<span class="kind">${escape(item.kind)}</span>`;
+  const foot = checkable ? `${escape(item.kind)} · ${escape(item.refs)}` : escape(item.refs);
   return `<article class="card" id="card-${item.id}">
-  <div class="card-top"><span class="kind">${escape(item.kind)}</span>${pill(item)}</div>
+  <div class="card-top">${top}${pill(item, checkable)}</div>
   <h4><a class="card-link" id="link-${item.id}" href="#${item.id}">${escape(item.title)}</a></h4>
   <p>${escape(item.summary)}</p>
-  <div class="card-foot"><span>${escape(item.refs)}</span><span class="more" aria-hidden="true">${escape(labels.details)} →</span></div>
+  <div class="card-foot"><span>${foot}</span><span class="more" aria-hidden="true">${escape(labels.details)} →</span></div>
 </article>`;
 }
 
-function detail(item: Item, where: string, labels: Labels): string {
+function detail(item: Item, where: string, labels: Labels, checkable: boolean): string {
   const links = item.links
     .map((link) => {
       const source = sourceOf(link.url);
@@ -204,9 +335,10 @@ function detail(item: Item, where: string, labels: Labels): string {
     .join('');
   return `<section class="detail" data-id="${item.id}" data-where="${escape(where)}" hidden>
   <div class="detail-head">
-    <div class="card-top"><span class="kind">${escape(item.kind)} · ${escape(item.refs)}</span>${pill(item)}</div>
+    <div class="card-top"><span class="kind">${escape(item.kind)} · ${escape(item.refs)}</span>${pill(item, checkable)}</div>
     <h2 id="title-${item.id}">${escape(item.title)}</h2>
     <p>${escape(item.summary)}</p>
+    ${checkable ? checkbox(item, labels) : ''}
   </div>
   <div class="block"><h3>${escape(labels.product)}</h3><div class="product">${blocks(item.product)}</div></div>
   <div class="block"><h3>${escape(labels.tech)}</h3><ul class="tech">${item.tech.map((line) => `<li>${inline(line)}</li>`).join('')}</ul></div>
@@ -214,22 +346,30 @@ function detail(item: Item, where: string, labels: Labels): string {
 </section>`;
 }
 
+/** Today's items are the ones the user ticks off. */
+const isCheckable = (section: Section) => section.key === 'today';
+
 function renderSection(section: Section, labels: Labels): string {
   const total = section.groups.reduce((count, group) => count + group.items.length, 0);
-  const count = `${total} ${total === 1 ? labels.item : labels.items}`;
+  const checkable = isCheckable(section);
+  const count =
+    checkable && total
+      ? `<span id="done-count">0</span> / ${total} ${escape(total === 1 ? labels.tickedOne : labels.tickedMany)}`
+      : escape(`${total} ${total === 1 ? labels.item : labels.items}`);
+  const countRole = checkable && total ? ' role="status"' : '';
   const body = section.groups.length
     ? `<div class="groups">${section.groups
         .map(
           (group) => `<div class="group">
   <h3>${escape(group.title)}</h3>
   ${group.hint ? `<p class="hint">${inline(group.hint)}</p>` : ''}
-  <div class="grid">${group.items.map((item) => card(item, labels)).join('\n')}</div>
+  <div class="grid">${group.items.map((item) => card(item, labels, checkable)).join('\n')}</div>
 </div>`,
         )
         .join('\n')}</div>`
     : `<p class="nothing">${escape(labels.nothing)}</p>`;
   return `<section class="day" aria-labelledby="section-${section.key}">
-  <div class="day-head"><h2 id="section-${section.key}">${escape(section.title)}</h2>${section.when ? `<span class="when">${escape(section.when)}</span>` : ''}<span class="count">${escape(count)}</span></div>
+  <div class="day-head"><h2 id="section-${section.key}">${escape(section.title)}</h2>${section.when ? `<span class="when">${escape(section.when)}</span>` : ''}<span class="count"${countRole}>${count}</span></div>
   ${body}
 </section>`;
 }
@@ -238,7 +378,9 @@ function renderSection(section: Section, labels: Labels): string {
 export function renderPage(plan: Plan, sections: Section[], labels: Labels, context: Context): string {
   const date = capitalize(longDate(context.today, context.lang), context.lang);
   const details = sections.flatMap((section) =>
-    section.groups.flatMap((group) => group.items.map((item) => detail(item, `${section.title} · ${group.title}`, labels))),
+    section.groups.flatMap((group) =>
+      group.items.map((item) => detail(item, `${section.title} · ${group.title}`, labels, isCheckable(section))),
+    ),
   );
   const tally = plan.tally?.length
     ? `<ul class="tally" aria-label="${escape(labels.inNumbers)}">${plan.tally
@@ -257,7 +399,7 @@ export function renderPage(plan: Plan, sections: Section[], labels: Labels, cont
 <style>${styles}</style>
 <script>${script}</script>
 </head>
-<body>
+<body data-day="${context.today}" data-done-label="${escape(labels.done)}">
 <div class="wrap">
 <header class="top">
   <span class="eyebrow">${escape(labels.standUp)}</span>
@@ -268,6 +410,7 @@ export function renderPage(plan: Plan, sections: Section[], labels: Labels, cont
 <main class="sections">
 ${sections.map((section) => renderSection(section, labels)).join('\n')}
 </main>
+<footer><p>${escape(labels.keyboardHint)}</p></footer>
 </div>
 <dialog id="detail" aria-labelledby="detail-where">
   <div class="dlg-bar">
