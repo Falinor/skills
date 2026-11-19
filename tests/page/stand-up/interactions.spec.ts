@@ -82,6 +82,16 @@ test('in the details, left and right arrows walk the items, sliding in from that
   expect(await entering(page, 'two')).toEqual({ direction: 'previous', animation: 'enter-previous' });
 });
 
+test('quick presses in the details each move one item', async ({ page }) => {
+  await page.goto(`${pageUrl}#one`);
+  await expect(page.getByRole('dialog', { name: 'Title one' })).toBeVisible();
+
+  for (let press = 0; press < 4; press += 1) await page.keyboard.press('ArrowRight', { delay: 0 });
+
+  await expect(page.getByRole('dialog', { name: 'Title five' })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).hash).toBe('#five');
+});
+
 test('with reduced motion, items change without sliding', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`${pageUrl}#two`);
@@ -102,14 +112,18 @@ test("only today's items have a Done checkbox", async ({ page }) => {
 test('ticking an item done marks its card and its details, and survives a reload', async ({ page }) => {
   await page.goto(pageUrl);
   const box = page.getByRole('checkbox', { name: 'Done – Title five' });
-  await expect(page.locator('#section-today').locator('..')).toContainText('0 / 3 done');
+  const counter = page.getByRole('status');
+  await expect(counter).toHaveText('0 / 3 done');
 
   await box.check();
 
   const card = page.locator('#card-five');
   await expect(card).toHaveClass(/\bdone\b/);
   await expect(card.locator('.pill')).toHaveText('Done');
-  await expect(page.locator('#section-today').locator('..')).toContainText('1 / 3 done');
+  await expect(counter).toHaveText('1 / 3 done');
+  // Only the title fades and is struck through: the rest keeps its contrast.
+  await expect(card).toHaveCSS('opacity', '1');
+  await expect(card.locator('h4')).toHaveCSS('text-decoration-line', 'line-through');
   await link(page, 'five').click();
   await expect(page.getByRole('dialog').getByRole('checkbox', { name: 'Done – Title five' })).toBeChecked();
   await page.keyboard.press('Escape');

@@ -1,7 +1,9 @@
 // The stand-up page: one self-contained HTML file. Cards for every item sit
 // in three sections; each item's details sit in one dialog, shown one at a
-// time and reached by #id. Its only script opens and walks that dialog; the
-// Content-Security-Policy allows that script by hash and nothing else.
+// time and reached by #id. Its only script opens and walks that dialog, moves
+// between cards with the arrow keys, and keeps today's Done ticks in the
+// browser's storage; the Content-Security-Policy allows that script by hash
+// and nothing else.
 import { createHash } from 'node:crypto';
 import { longDate } from './dates.ts';
 import { escape } from './html.ts';
@@ -76,8 +78,8 @@ section.day { display: grid; gap: 20px; }
 .card p { margin: 0; color: var(--muted); font-size: 14px; }
 .card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 6px; border-top: 1px dashed var(--line); }
 .card-foot .more { color: var(--accent); font-weight: 500; white-space: nowrap; }
-.card.done { opacity: .62; }
-.card.done h4 { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.card.done { background: var(--bg); }
+.card.done h4 { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .check { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--fg); }
 .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ok); cursor: pointer; }
 .detail-head .check { justify-self: start; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
@@ -163,15 +165,18 @@ const script = String.raw`addEventListener('DOMContentLoaded', () => {
     close.focus();
   }
 
+  // Show the item at once, then record it in the address: a second press
+  // before the hashchange lands then starts from the item on screen.
   function go(id) {
-    if (location.hash.slice(1) === id) show(id);
-    else location.hash = id;
+    show(id);
+    if (location.hash.slice(1) !== id) location.hash = id;
   }
 
   function fromHash() {
     const id = location.hash.slice(1);
-    if (order.includes(id)) show(id);
-    else if (dialog.open) dialog.close();
+    if (order.includes(id)) {
+      if (!dialog.open || id !== current) show(id);
+    } else if (dialog.open) dialog.close();
   }
 
   dialog.addEventListener('close', () => {
@@ -205,22 +210,26 @@ const script = String.raw`addEventListener('DOMContentLoaded', () => {
   // Arrow keys: in the details, the previous and next item; on a card, the
   // card beside it in page order, or the nearest card in the row above or below.
   const cards = order.map((id) => document.getElementById('card-' + id));
-  const top = (card) => card.getBoundingClientRect().top;
-  const centre = (card) => {
+  // Cards whose tops differ by less than this many pixels share a row (a hovered card lifts by 1px).
+  const rowTolerance = 4;
+  const topOf = (card) => card.getBoundingClientRect().top;
+  const centreOf = (card) => {
     const box = card.getBoundingClientRect();
     return box.left + box.width / 2;
   };
 
   function nearestInRow(card, down) {
-    const from = top(card);
-    const candidates = cards.filter((other) => (down ? top(other) > from + 4 : top(other) < from - 4));
+    const from = topOf(card);
+    const candidates = cards.filter((other) =>
+      down ? topOf(other) > from + rowTolerance : topOf(other) < from - rowTolerance,
+    );
     if (!candidates.length) return null;
-    const tops = candidates.map(top);
+    const tops = candidates.map(topOf);
     const row = down ? Math.min(...tops) : Math.max(...tops);
-    const x = centre(card);
+    const x = centreOf(card);
     return candidates
-      .filter((other) => Math.abs(top(other) - row) < 4)
-      .sort((a, b) => Math.abs(centre(a) - x) - Math.abs(centre(b) - x))[0];
+      .filter((other) => Math.abs(topOf(other) - row) < rowTolerance)
+      .sort((a, b) => Math.abs(centreOf(a) - x) - Math.abs(centreOf(b) - x))[0];
   }
 
   document.addEventListener('keydown', (event) => {
@@ -345,8 +354,9 @@ function renderSection(section: Section, labels: Labels): string {
   const checkable = isCheckable(section);
   const count =
     checkable && total
-      ? `<span id="done-count">0</span> / ${total} ${escape(labels.doneCount)}`
+      ? `<span id="done-count">0</span> / ${total} ${escape(total === 1 ? labels.tickedOne : labels.tickedMany)}`
       : escape(`${total} ${total === 1 ? labels.item : labels.items}`);
+  const countRole = checkable && total ? ' role="status"' : '';
   const body = section.groups.length
     ? `<div class="groups">${section.groups
         .map(
@@ -359,7 +369,7 @@ function renderSection(section: Section, labels: Labels): string {
         .join('\n')}</div>`
     : `<p class="nothing">${escape(labels.nothing)}</p>`;
   return `<section class="day" aria-labelledby="section-${section.key}">
-  <div class="day-head"><h2 id="section-${section.key}">${escape(section.title)}</h2>${section.when ? `<span class="when">${escape(section.when)}</span>` : ''}<span class="count">${count}</span></div>
+  <div class="day-head"><h2 id="section-${section.key}">${escape(section.title)}</h2>${section.when ? `<span class="when">${escape(section.when)}</span>` : ''}<span class="count"${countRole}>${count}</span></div>
   ${body}
 </section>`;
 }

@@ -173,6 +173,15 @@ test('labels the page in the start language, with dates written in it', () => {
   assert.match(html, /mercredi 18 novembre 2026/);
 });
 
+test("counts today's done items with the singular for a single item", () => {
+  const folder = started(sandbox, ['--lang', 'fr']);
+  writePlan(folder, plan());
+
+  assert.equal(sandbox.run(['render', folder]).status, 0);
+
+  assert.match(readPage(folder), /<span id="done-count">0<\/span> \/ 1 fait</);
+});
+
 test('names link badges in the page language, brands as they are', () => {
   const folder = started(sandbox, ['--lang', 'fr']);
   const links = [
