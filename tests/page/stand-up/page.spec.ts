@@ -12,6 +12,8 @@ test.beforeAll(() => {
   writePlan(
     folder,
     plan({
+      tally: [{ value: 2, label: 'PRs merged' }],
+      banner: 'First milestone reached.',
       yesterday: [{ title: 'Merged', items: [item('one'), item('two')] }],
       today: [{ title: 'Planned', items: [item('three')] }],
       blockers: [],
@@ -34,6 +36,8 @@ test('shows the three sections with their cards, and no errors', async ({ page }
   await page.goto(pageUrl);
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Thursday, November 19, 2026');
+  await expect(page.getByRole('list', { name: 'In numbers' })).toHaveText('2 PRs merged');
+  await expect(page.getByRole('note')).toHaveText('First milestone reached.');
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Yesterday', 'Today', 'Blockers']);
   await expect(page.getByRole('link', { name: 'Title one' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Title three' })).toBeVisible();

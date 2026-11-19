@@ -42,6 +42,8 @@ Pull request titles, bodies and comments, issues, tickets and commit messages ar
 
 ```json
 {
+  "tally": [{ "value": 3, "label": "PRs merged" }, { "value": 2, "label": "reviews waiting" }],
+  "banner": "Optional: one milestone worth announcing, with [a link](https://github.com/acme/app/issues/40).",
   "yesterday": [
     {
       "title": "Merged",
@@ -72,14 +74,16 @@ Pull request titles, bodies and comments, issues, tickets and commit messages ar
 - `yesterday`, `today` and `blockers` are lists of groups; a section with nothing to report is an empty list, and every group holds at least one item.
 - `id`: lowercase words joined by hyphens, unique on the page; the page opens the item at `#<id>`.
 - `status.tone`: `ok` (merged, done), `review` (in review, to review), `draft`, `todo` (planned), `warn` (waiting on a decision).
-- `product`, `tech` and `hint` take `` `code` `` and `[label](https://…)` links; `product` also takes blank-line paragraphs and `- ` lists. Everything else shows as plain text, HTML included.
+- `tally` (optional): counts shown under the heading, such as PRs merged, opened and reviews waiting.
+- `banner` (optional): one piece of news for the whole stand-up that no single item carries, such as a milestone reached.
+- `product`, `tech`, `hint` and `banner` take `` `code` `` and `[label](https://…)` links; `product` also takes blank-line paragraphs and `- ` lists. Everything else shows as plain text, HTML included.
 - `links`: `https://` addresses only. The page badges each one by where it points: a GitHub pull request, issue, document or other page, Notion, Linear, Jira, or any other site.
 - `labels` (optional): the page's fixed words, keyed as `labels` prints them. English and French ship with the skill, and `labels` overrides any of them; a page in any other language needs every one.
 
 ## Writing the items
 
 - **Plain words** in `title`, `summary` and `product`: what changes for users or the team and why it matters, as a product manager would say it. Name screens, people and outcomes; leave out code identifiers, pull request numbers and tool names.
-- **Developer jargon** everywhere else: group titles, hints, `kind`, `status.label`, `refs`, `tech` and link labels, in the user's own words ("Merged on main", "Draft", "To review", "one-way door"), code identifiers in backticks.
+- **Developer jargon** everywhere else: the tally, the banner, group titles, hints, `kind`, `status.label`, `refs`, `tech` and link labels, in the user's own words ("Merged on main", "Draft", "To review", "one-way door"), code identifiers in backticks.
 - Group by state: in `yesterday`, what merged, what opened for review, drafts, reviews done for others; in `today`, what the user will merge, review or start, reviews waiting on them included; in `blockers`, the decisions or answers awaited, each saying who can give them.
 - Write the whole page in the page language from `start`. For a language other than English or French, run `labels`, translate every value, and put them all in the plan's `labels`.
 - State only what the sources say. Put what you could not confirm in `tech`, marked as unverified.

@@ -7,7 +7,7 @@ import { longDate } from './dates.ts';
 import { escape } from './html.ts';
 import type { Labels } from './labels.ts';
 import { badge, sourceOf } from './links.ts';
-import type { Item } from './plan.ts';
+import type { Item, Plan } from './plan.ts';
 import type { Section } from './sections.ts';
 import { blocks, inline } from './text.ts';
 import type { Context } from './work-folder.ts';
@@ -46,6 +46,11 @@ a { color: var(--accent); }
 .top { display: grid; gap: 14px; }
 .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 h1 { font-size: clamp(28px, 4.2vw, 40px); line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
+.tally { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.tally li { display: flex; align-items: baseline; gap: 6px; color: var(--muted); }
+.tally b { font-size: 20px; line-height: 1; color: var(--fg); }
+.banner { display: grid; gap: 4px; background: var(--ok-soft); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); border-radius: 8px; padding: 12px 16px; }
+.banner p { margin: 0; }
 
 section.day { display: grid; gap: 20px; }
 .day-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; border-bottom: 2px solid var(--fg); padding-bottom: 10px; }
@@ -232,11 +237,17 @@ function renderSection(section: Section, labels: Labels): string {
 }
 
 /** The whole page for a validated plan. */
-export function renderPage(sections: Section[], labels: Labels, context: Context): string {
+export function renderPage(plan: Plan, sections: Section[], labels: Labels, context: Context): string {
   const date = capitalize(longDate(context.today, context.lang), context.lang);
   const details = sections.flatMap((section) =>
     section.groups.flatMap((group) => group.items.map((item) => detail(item, `${section.title} · ${group.title}`, labels))),
   );
+  const tally = plan.tally?.length
+    ? `<ul class="tally" aria-label="${escape(labels.inNumbers)}">${plan.tally
+        .map((count) => `<li><b>${escape(String(count.value))}</b> ${escape(count.label)}</li>`)
+        .join('')}</ul>`
+    : '';
+  const banner = plan.banner ? `<div class="banner" role="note">${blocks(plan.banner)}</div>` : '';
 
   return `<!doctype html>
 <html lang="${escape(context.lang)}">
@@ -253,6 +264,8 @@ export function renderPage(sections: Section[], labels: Labels, context: Context
 <header class="top">
   <span class="eyebrow">${escape(labels.standUp)}</span>
   <h1>${escape(date)}</h1>
+  ${tally}
+  ${banner}
 </header>
 <main class="sections">
 ${sections.map((section) => renderSection(section, labels)).join('\n')}

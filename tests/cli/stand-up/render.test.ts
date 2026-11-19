@@ -43,6 +43,8 @@ test('escapes every piece of plan text', () => {
   writePlan(
     folder,
     plan({
+      banner: `Banner ${hostile}`,
+      tally: [{ value: 3, label: `merged ${hostile}` }],
       yesterday: [
         {
           title: `Group ${hostile}`,
@@ -69,17 +71,18 @@ test('escapes every piece of plan text', () => {
   assert.equal(result.status, 0, result.stderr);
   const html = readPage(folder);
   assert.ok(!html.includes(hostile), 'raw markup leaked into the page');
-  for (const label of ['Group', 'Hint', 'Title', 'Summary', 'Kind', 'Refs', 'Status', 'Product', 'Tech', 'Link']) {
+  for (const label of ['Banner', 'merged', 'Group', 'Hint', 'Title', 'Summary', 'Kind', 'Refs', 'Status', 'Product', 'Tech', 'Link']) {
     assert.ok(html.includes(`${label} &lt;script&gt;alert(1)&lt;/script&gt;`), label);
   }
   assert.ok(html.includes('href="https://example.com/?a=1&amp;b=&quot;2&quot;"'));
 });
 
-test('turns backticks into code and [label](https) into links, in product, tech and hint', () => {
+test('turns backticks into code and [label](https) into links, in product, tech, hint and banner', () => {
   const folder = started(sandbox);
   writePlan(
     folder,
     plan({
+      banner: 'First lot `P0` done, see [the tracker](https://example.com/p0).',
       yesterday: [
         {
           title: 'Merged',
@@ -103,6 +106,7 @@ test('turns backticks into code and [label](https) into links, in product, tech 
   assert.ok(html.includes('<p>First paragraph with <a href="https://example.com/a" target="_blank" rel="noopener">a link</a>.</p>'));
   assert.ok(html.includes('<ul><li>one point</li><li><code>another</code> point</li></ul>'));
   assert.ok(html.includes('Calls <code>createServer({ mailer })</code>.'));
+  assert.ok(html.includes('<p>First lot <code>P0</code> done, see <a href="https://example.com/p0" target="_blank" rel="noopener">the tracker</a>.</p>'));
 });
 
 test('rejects a broken plan, listing every violation at once', () => {
@@ -110,6 +114,8 @@ test('rejects a broken plan, listing every violation at once', () => {
   writePlan(
     folder,
     plan({
+      banner: 'A [bad link](javascript:void(0)).',
+      tally: [{ value: 3 }],
       yesterday: [
         {
           title: 'Merged',
@@ -137,6 +143,8 @@ test('rejects a broken plan, listing every violation at once', () => {
   assert.match(result.stderr, /five: link http:\/\/example\.com must start with https:\/\//);
   assert.match(result.stderr, /six: link javascript:alert\(1\) must start with https:\/\//);
   assert.match(result.stderr, /yesterday group "Empty" has no items/);
+  assert.match(result.stderr, /banner: link javascript:void\(0\) must start with https:\/\//);
+  assert.match(result.stderr, /tally must be a list of \{ value, label \}/);
 });
 
 test('rejects a missing or unreadable plan', () => {

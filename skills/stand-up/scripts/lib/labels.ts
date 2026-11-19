@@ -4,6 +4,7 @@ import { UserError } from './errors.ts';
 
 export const labelKeys = [
   'standUp',
+  'inNumbers',
   'yesterday',
   'since',
   'today',
@@ -31,6 +32,7 @@ export type Labels = Record<LabelKey, string>;
 const builtIn: Record<string, Labels> = {
   en: {
     standUp: 'Stand-up',
+    inNumbers: 'In numbers',
     yesterday: 'Yesterday',
     since: 'Since',
     today: 'Today',
@@ -53,6 +55,7 @@ const builtIn: Record<string, Labels> = {
   },
   fr: {
     standUp: 'Point quotidien',
+    inNumbers: 'En chiffres',
     yesterday: 'Hier',
     since: 'Depuis',
     today: 'Aujourd’hui',

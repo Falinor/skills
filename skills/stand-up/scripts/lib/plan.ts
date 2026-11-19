@@ -30,8 +30,15 @@ export type Item = {
 
 export type Group = { title: string; hint?: string; items: Item[] };
 
-/** `labels` override the built-in ones; a language without built-in labels needs them all. */
-export type Plan = { labels?: Partial<Labels> } & Record<SectionKey, Group[]>;
+/** A count shown under the heading, such as 11 PRs merged. */
+export type Count = { value: number | string; label: string };
+
+/**
+ * `tally` and `banner` sit under the heading: counts, and one piece of news
+ * that is no single item's. `labels` override the built-in ones; a language
+ * without built-in labels needs them all.
+ */
+export type Plan = { tally?: Count[]; banner?: string; labels?: Partial<Labels> } & Record<SectionKey, Group[]>;
 
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -120,6 +127,15 @@ export function validatePlan(raw: unknown, lang: string): { plan: Plan; labels: 
       }
       group.items.forEach((item, position) => checkItem(item, `${name} item ${position + 1}`, seen, violations));
     });
+  }
+
+  if (raw.banner !== undefined && !isText(raw.banner)) violations.push('banner is empty');
+  checkInlineLinks(raw.banner, 'banner', violations);
+  if (raw.tally !== undefined) {
+    const valid =
+      Array.isArray(raw.tally) &&
+      raw.tally.every((entry) => isObject(entry) && isText(entry.label) && (typeof entry.value === 'number' || isText(entry.value)));
+    if (!valid) violations.push('tally must be a list of { value, label }');
   }
 
   const labels = resolveLabels(lang, raw.labels, violations);
